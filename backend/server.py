@@ -163,6 +163,8 @@ app.mount("/results", StaticFiles(directory=str(RESULT_DIR)), name="results")
 # ========== 前端静态文件服务 ==========
 # 将 frontend/index.html 作为根路径
 FRONTEND_FILE = BASE_DIR.parent / "frontend" / "index.html"
+if not FRONTEND_FILE.exists():
+    FRONTEND_FILE = BASE_DIR / "frontend" / "index.html"
 
 @app.get("/")
 def serve_frontend():
