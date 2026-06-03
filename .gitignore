@@ -24,3 +24,6 @@ Thumbs.db
 # Environment
 .env
 .env.local
+
+# Runtime data (mounted via Docker - never commit)
+data/
