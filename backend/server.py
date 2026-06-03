@@ -15,7 +15,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from analyzer import analyze_image, result_to_dict, GRID_MODES
+try:
+    from .analyzer import analyze_image, result_to_dict, GRID_MODES
+    from .ai_analyzer import analyze_with_ai, AI_ENABLED
+except ImportError:
+    from analyzer import analyze_image, result_to_dict, GRID_MODES
+    from ai_analyzer import analyze_with_ai, AI_ENABLED
 
 app = FastAPI(title="Exposure Lab API", version="1.0.0")
 
@@ -112,6 +117,15 @@ async def analyze(
     analysis_data["original_name"] = original_name
     analysis_data["timestamp"] = datetime.now().isoformat()
 
+    # AI 分析（异步调用，不阻塞响应）
+    ai_advice = analyze_with_ai(
+        mode_name=analysis_data["mode_name"],
+        avg_brightness=analysis_data["avg_brightness"],
+        metering_points=analysis_data["metering_points"],
+    )
+    analysis_data["ai_advice"] = ai_advice
+    analysis_data["ai_enabled"] = AI_ENABLED
+
     analysis_path = RESULT_DIR / f"{file_id}.json"
     with open(analysis_path, "w") as f:
         json.dump(analysis_data, f, ensure_ascii=False, indent=2)
@@ -145,6 +159,24 @@ def delete_history(file_id: str):
     for p in RESULT_DIR.glob(f"{file_id}_*"):
         p.unlink(missing_ok=True)
     return {"status": "deleted"}
+
+
+@app.get("/api/ai-advice/{file_id}")
+def get_ai_advice(file_id: str):
+    """重新触发 AI 分析"""
+    path = RESULT_DIR / f"{file_id}.json"
+    if not path.exists():
+        raise HTTPException(404, "Result not found")
+    data = json.loads(path.read_text())
+    ai_advice = analyze_with_ai(
+        mode_name=data.get("mode_name", ""),
+        avg_brightness=data.get("avg_brightness", 0),
+        metering_points=data.get("metering_points", []),
+    )
+    data["ai_advice"] = ai_advice
+    with open(path, "w") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    return {"advice": ai_advice}
 
 
 @app.get("/api/result/{file_id}")

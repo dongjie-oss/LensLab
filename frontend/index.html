@@ -293,6 +293,17 @@ function App() {
     }
   };
 
+  // 重试 AI 分析
+  const retryAiAnalysis = async (fileId) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/ai-advice/${fileId}`);
+      const data = await res.json();
+      setResult(prev => ({ ...prev, ai_advice: data.advice }));
+    } catch (err) {
+      alert('AI 分析重试失败');
+    }
+  };
+
   // 删除历史
   const deleteHistory = async (fileId) => {
     await fetch(`${API_BASE}/api/history/${fileId}`, { method: 'DELETE' });
@@ -487,6 +498,36 @@ function App() {
             <div className="bg-slate-800/30 rounded-xl p-3 border border-slate-700/50">
               <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">曝光评估</div>
               <ExposureAdvice result={result} />
+            </div>
+
+            {/* AI 智能分析 */}
+            <div className="bg-purple-900/20 rounded-xl p-3 border border-purple-500/30">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" />
+                <span className="text-[10px] text-purple-400 uppercase tracking-wider">AI 智能分析</span>
+                {result.ai_enabled === false && (
+                  <span className="text-[9px] text-slate-600">（未配置）</span>
+                )}
+              </div>
+              {result.ai_advice ? (
+                <div className="text-xs text-slate-300 leading-relaxed whitespace-pre-wrap">
+                  {result.ai_advice}
+                </div>
+              ) : result.ai_enabled ? (
+                <div className="text-xs text-slate-500">
+                  AI 分析中或服务暂时不可用
+                  <button
+                    onClick={() => retryAiAnalysis(result.file_id)}
+                    className="ml-2 text-purple-400 hover:text-purple-300 underline"
+                  >
+                    重试
+                  </button>
+                </div>
+              ) : (
+                <div className="text-xs text-slate-500">
+                  配置 AI_API_KEY 环境变量后自动启用
+                </div>
+              )}
             </div>
           </div>
         )}
