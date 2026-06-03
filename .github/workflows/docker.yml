@@ -1,4 +1,4 @@
-name: Build & Push Docker Image to Aliyun ACR
+name: 自动构建并推送Docker镜像到阿里云ACR
 
 on:
   push:
@@ -9,8 +9,8 @@ on:
   workflow_dispatch:
 
 env:
-  ACR_REGISTRY: registry.cn-hangzhou.aliyuncs.com
-  ACR_NAMESPACE: ${{ vars.ACR_NAMESPACE }}
+  ACR_REGISTRY: ${{ vars.ALIYUN_REGISTRY }}
+  ACR_NAMESPACE: ${{ vars.ALIYUN_NAME_SPACE }}
   IMAGE_NAME: exposure-lab
 
 jobs:
@@ -25,9 +25,9 @@ jobs:
 
       - name: Login to Aliyun ACR
         run: |
-          echo "${{ secrets.ACR_ACCESS_KEY_SECRET }}" | \
+          echo "${{ secrets.ALIYUN_REGISTRY_PASSWORD }}" | \
           docker login ${{ env.ACR_REGISTRY }} \
-            -u "${{ secrets.ACR_ACCESS_KEY_ID }}" \
+            -u "${{ secrets.ALIYUN_REGISTRY_USER }}" \
             --password-stdin
 
       - name: Build and push
