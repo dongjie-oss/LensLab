@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>曝光检测大师 · Exposure Lab</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  * { font-family: 'Inter', -apple-system, sans-serif; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  
+  /* 自定义滚动条 */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+  /* 测光点动画 */
+  @keyframes pulse-ring {
+    0% { transform: scale(0.8); opacity: 1; }
+    100% { transform: scale(1.6); opacity: 0; }
+  }
+  .metering-dot::before {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    border: 2px solid currentColor;
+    animation: pulse-ring 2s ease-out infinite;
+  }
+
+  /* 图片容器 */
+  .image-container {
+    position: relative;
+    display: inline-block;
+    max-width: 100%;
+  }
+  .image-container img {
+    max-width: 100%;
+    max-height: 70vh;
+    display: block;
+  }
+
+  /* 拖拽上传 */
+  .drop-zone {
+    border: 2px dashed #334155;
+    transition: all 0.3s;
+  }
+  .drop-zone.drag-over {
+    border-color: #60a5fa;
+    background: rgba(96, 165, 250, 0.05);
+  }
+
+  /* 直方图 */
+  .histogram-bar {
+    transition: height 0.3s ease;
+  }
+</style>
+</head>
+<body class="bg-[#0a0e17] text-slate-200 min-h-screen">
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useRef, useEffect, useCallback } = React;
+
+const API_BASE = window.location.origin;
+
+// ========== 工具函数 ==========
+const evColor = (ev) => {
+  if (ev >= 2) return '#ef4444';      // 严重过曝 - 红
+  if (ev >= 1) return '#f97316';      // 过曝 - 橙
+  if (ev >= 0.5) return '#eab308';    // 轻微过曝 - 黄
+  if (ev > -0.5) return '#22c55e';    // 正常 - 绿
+  if (ev > -1) return '#06b6d4';      // 轻微欠曝 - 青
+  if (ev > -2) return '#3b82f6';      // 欠曝 - 蓝
+  return '#8b5cf6';                    // 严重欠曝 - 紫
+};
+
+const evBgClass = (ev) => {
+  if (ev >= 1) return 'bg-red-500/20 text-red-400 border-red-500/30';
+  if (ev >= 0.5) return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
+  if (ev > -0.5) return 'bg-green-500/20 text-green-400 border-green-500/30';
+  if (ev > -1) return 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30';
+  return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
+};
+
+// ========== 组件 ==========
+
+// 测光点叠加层
+function MeteringOverlay({ points, width, height, imageWidth, imageHeight, visible }) {
+  if (!points || !visible) return null;
+  
+  const scaleX = imageWidth / width;
+  const scaleY = imageHeight / height;
+
+  return (
+    <div className="absolute inset-0 pointer-events-none">
+      {points.map((p, i) => {
+        const left = (p.cx / width) * imageWidth;
+        const top = (p.cy / height) * imageHeight;
+        const color = evColor(p.ev);
+        
+        return (
+          <div
+            key={i}
+            className="absolute transform -translate-x-1/2 -translate-y-1/2 metering-dot"
+            style={{ left, top, color }}
+          >
+            {/* 十字线 */}
+            <div className="absolute w-4 h-[1px] bg-current/40 left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" />
+            <div className="absolute w-[1px] h-4 bg-current/40 left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" />
+            
+            {/* 标签 */}
+            <div 
+              className="absolute left-1/2 -translate-x-1/2 whitespace-nowrap flex flex-col items-center gap-0.5"
+              style={{ top: 18 }}
+            >
+              <span className="text-[10px] font-medium text-white/80 bg-black/60 px-1.5 py-0.5 rounded backdrop-blur-sm">
+                {p.name}
+              </span>
+              <span 
+                className="text-xs font-bold mono px-1.5 py-0.5 rounded backdrop-blur-sm border"
+                style={{ 
+                  backgroundColor: `${color}33`, 
+                  color: color,
+                  borderColor: `${color}55`
+                }}
+              >
+                {p.ev_display} EV
+              </span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// 直方图
+function Histogram({ data }) {
+  if (!data || data.length === 0) return null;
+  const max = Math.max(...data, 1);
+  
+  return (
+    <div className="flex items-end gap-[1px] h-16">
+      {data.map((v, i) => (
+        <div
+          key={i}
+          className="histogram-bar flex-1 rounded-t-sm"
+          style={{
+            height: `${(v / max) * 100}%`,
+            backgroundColor: `hsl(${(i / 32) * 270}, 60%, 55%)`,
+            opacity: 0.7,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+// 区域模式选择器
+function ModeSelector({ modes, current, onChange }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {modes.map(m => (
+        <button
+          key={m.key}
+          onClick={() => onChange(m.key)}
+          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+            current === m.key
+              ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40'
+              : 'bg-slate-800/50 text-slate-400 border border-slate-700/50 hover:border-slate-600'
+          }`}
+        >
+          {m.name}
+          <span className="ml-1 text-xs opacity-60">{m.rows}×{m.cols}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// 文件历史项
+function HistoryItem({ item, onSelect, onDelete, active }) {
+  return (
+    <div 
+      className={`group flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-all ${
+        active ? 'bg-blue-500/10 border border-blue-500/30' : 'hover:bg-slate-800/50 border border-transparent'
+      }`}
+      onClick={() => onSelect(item)}
+    >
+      <div className="w-10 h-10 rounded bg-slate-800 overflow-hidden flex-shrink-0">
+        <img 
+          src={`${API_BASE}/${item.original}`} 
+          className="w-full h-full object-cover"
+          alt=""
+        />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="text-xs text-slate-300 truncate">{item.filename}</div>
+        <div className="text-[10px] text-slate-500">
+          {new Date(item.timestamp).toLocaleString('zh-CN')}
+        </div>
+      </div>
+      <button
+        onClick={(e) => { e.stopPropagation(); onDelete(item.file_id); }}
+        className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400 transition-all p-1"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
+// 主应用
+function App() {
+  const [file, setFile] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState('9');
+  const [modes, setModes] = useState([]);
+  const [history, setHistory] = useState([]);
+  const [showOverlay, setShowOverlay] = useState(true);
+  const [dragOver, setDragOver] = useState(false);
+  const [imageDims, setImageDims] = useState({ w: 0, h: 0 });
+  const fileInputRef = useRef(null);
+  const imgRef = useRef(null);
+
+  // 加载模式列表和历史
+  useEffect(() => {
+    fetch(`${API_BASE}/api/grid-modes`).then(r => r.json()).then(d => setModes(d.modes));
+    fetch(`${API_BASE}/api/history`).then(r => r.json()).then(d => setHistory(d.items));
+  }, []);
+
+  // 处理文件选择
+  const handleFile = (f) => {
+    if (!f) return;
+    setFile(f);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setPreview(e.target.result);
+      setResult(null);
+    };
+    reader.readAsDataURL(f);
+  };
+
+  // 拖拽
+  const onDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const f = e.dataTransfer.files[0];
+    if (f) handleFile(f);
+  };
+
+  // 分析
+  const analyze = async () => {
+    if (!file) return;
+    setLoading(true);
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('mode', mode);
+    fd.append('ev_method', 'standard');
+    
+    try {
+      const res = await fetch(`${API_BASE}/api/analyze`, { method: 'POST', body: fd });
+      const data = await res.json();
+      setResult(data);
+      // 刷新历史
+      const h = await fetch(`${API_BASE}/api/history`).then(r => r.json());
+      setHistory(h.items);
+    } catch (err) {
+      alert('分析失败: ' + err.message);
+    }
+    setLoading(false);
+  };
+
+  // 选择历史
+  const selectHistory = async (item) => {
+    try {
+      const data = await fetch(`${API_BASE}/api/result/${item.file_id}`).then(r => r.json());
+      setResult(data);
+      setPreview(`${API_BASE}/${item.original}`);
+      setMode(data.mode);
+    } catch (err) {
+      alert('加载失败');
+    }
+  };
+
+  // 删除历史
+  const deleteHistory = async (fileId) => {
+    await fetch(`${API_BASE}/api/history/${fileId}`, { method: 'DELETE' });
+    const h = await fetch(`${API_BASE}/api/history`).then(r => r.json());
+    setHistory(h.items);
+  };
+
+  // 图片加载后获取实际显示尺寸
+  const onImageLoad = () => {
+    if (imgRef.current) {
+      setImageDims({ w: imgRef.current.clientWidth, h: imgRef.current.clientHeight });
+    }
+  };
+
+  return (
+    <div className="flex h-screen overflow-hidden">
+      {/* 左侧栏 - 文件管理 */}
+      <div className="w-64 bg-[#0d1117] border-r border-slate-800 flex flex-col">
+        {/* Logo */}
+        <div className="p-4 border-b border-slate-800">
+          <h1 className="text-lg font-bold text-white tracking-tight">
+            <span className="text-blue-400">⚡</span> 曝光检测大师
+          </h1>
+          <p className="text-[10px] text-slate-500 mt-0.5">Exposure Lab v1.0</p>
+        </div>
+
+        {/* 上传按钮 */}
+        <div className="p-3">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".jpg,.jpeg,.png"
+            className="hidden"
+            onChange={(e) => handleFile(e.target.files[0])}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="w-full py-2.5 bg-blue-500/10 text-blue-400 border border-blue-500/30 rounded-lg text-sm font-medium hover:bg-blue-500/20 transition-all"
+          >
+            + 导入图片
+          </button>
+        </div>
+
+        {/* 历史列表 */}
+        <div className="flex-1 overflow-y-auto px-3 pb-3">
+          <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-2 px-1">历史记录</div>
+          {history.length === 0 ? (
+            <div className="text-xs text-slate-600 text-center py-8">暂无记录</div>
+          ) : (
+            history.slice().reverse().map(item => (
+              <HistoryItem
+                key={item.file_id}
+                item={item}
+                onSelect={selectHistory}
+                onDelete={deleteHistory}
+                active={result?.file_id === item.file_id}
+              />
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* 主区域 */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* 顶部工具栏 */}
+        <div className="h-14 bg-[#0d1117] border-b border-slate-800 flex items-center justify-between px-6">
+          <div className="flex items-center gap-4">
+            <span className="text-xs text-slate-500">区域模式</span>
+            <ModeSelector modes={modes} current={mode} onChange={setMode} />
+          </div>
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showOverlay}
+                onChange={(e) => setShowOverlay(e.target.checked)}
+                className="rounded border-slate-600 bg-slate-800 text-blue-500 focus:ring-blue-500/30"
+              />
+              显示测光点
+            </label>
+            <button
+              onClick={analyze}
+              disabled={!file || loading}
+              className="px-5 py-1.5 bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+            >
+              {loading ? '分析中...' : '一键分析'}
+            </button>
+          </div>
+        </div>
+
+        {/* 图片预览区 */}
+        <div className="flex-1 overflow-auto flex items-center justify-center p-8 bg-[#080b12]">
+          {!preview ? (
+            <div
+              className={`drop-zone w-full max-w-lg aspect-video rounded-2xl flex flex-col items-center justify-center cursor-pointer ${
+                dragOver ? 'drag-over' : ''
+              }`}
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={onDrop}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <svg className="w-12 h-12 text-slate-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <p className="text-slate-400 text-sm">拖拽图片到此处，或点击选择</p>
+              <p className="text-slate-600 text-xs mt-2">支持 JPG / PNG</p>
+            </div>
+          ) : (
+            <div className="image-container">
+              <img
+                ref={imgRef}
+                src={preview}
+                alt="preview"
+                onLoad={onImageLoad}
+                className="rounded-lg shadow-2xl"
+              />
+              <MeteringOverlay
+                points={result?.metering_points}
+                width={result?.width}
+                height={result?.height}
+                imageWidth={imageDims.w}
+                imageHeight={imageDims.h}
+                visible={showOverlay && result}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 右侧栏 - 分析结果 */}
+      <div className="w-72 bg-[#0d1117] border-l border-slate-800 flex flex-col overflow-hidden">
+        <div className="p-4 border-b border-slate-800">
+          <h2 className="text-sm font-semibold text-slate-300">分析结果</h2>
+        </div>
+
+        {!result ? (
+          <div className="flex-1 flex items-center justify-center">
+            <p className="text-xs text-slate-600">导入图片后点击分析</p>
+          </div>
+        ) : (
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            {/* 整体信息 */}
+            <div className="bg-slate-800/30 rounded-xl p-3 border border-slate-700/50">
+              <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">整体曝光</div>
+              <div className="flex items-baseline gap-2">
+                <span className="text-2xl font-bold mono" style={{ color: evColor((result.avg_brightness - 128) / 45) }}>
+                  {((result.avg_brightness - 128) / 45).toFixed(1)}
+                </span>
+                <span className="text-xs text-slate-500">EV</span>
+              </div>
+              <div className="text-[10px] text-slate-500 mt-1">
+                平均亮度: {result.avg_brightness} / 255
+              </div>
+            </div>
+
+            {/* 直方图 */}
+            <div className="bg-slate-800/30 rounded-xl p-3 border border-slate-700/50">
+              <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">亮度直方图</div>
+              <Histogram data={result.histogram} />
+              <div className="flex justify-between text-[9px] text-slate-600 mt-1">
+                <span>暗部</span>
+                <span>中间调</span>
+                <span>高光</span>
+              </div>
+            </div>
+
+            {/* 测光点列表 */}
+            <div>
+              <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">
+                区域测光 · {result.mode_name}
+              </div>
+              <div className="space-y-1.5">
+                {result.metering_points.map((p, i) => (
+                  <div
+                    key={i}
+                    className={`flex items-center justify-between px-3 py-2 rounded-lg border ${evBgClass(p.ev)}`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium">{p.name}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] opacity-60 mono">{p.brightness}</span>
+                      <span className="text-sm font-bold mono">{p.ev_display}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* 曝光评估 */}
+            <div className="bg-slate-800/30 rounded-xl p-3 border border-slate-700/50">
+              <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">曝光评估</div>
+              <ExposureAdvice result={result} />
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// 曝光建议
+function ExposureAdvice({ result }) {
+  const avg = (result.avg_brightness - 128) / 45;
+  const maxEv = Math.max(...result.metering_points.map(p => p.ev));
+  const minEv = Math.min(...result.metering_points.map(p => p.ev));
+  const range = maxEv - minEv;
+
+  let advice = [];
+  if (avg > 1) advice.push({ text: '整体偏亮，建议降低曝光补偿', color: 'text-orange-400' });
+  else if (avg < -1) advice.push({ text: '整体偏暗，建议增加曝光补偿', color: 'text-blue-400' });
+  else advice.push({ text: '整体曝光正常', color: 'text-green-400' });
+
+  if (range > 3) advice.push({ text: '光比过大，建议使用HDR或补光', color: 'text-yellow-400' });
+  else if (range > 2) advice.push({ text: '光比适中，注意高光细节', color: 'text-cyan-400' });
+
+  if (maxEv >= 2.5) advice.push({ text: '存在过曝区域，注意高光溢出', color: 'text-red-400' });
+  if (minEv <= -2.5) advice.push({ text: '存在死黑区域，暗部细节丢失', color: 'text-purple-400' });
+
+  return (
+    <div className="space-y-1.5">
+      {advice.map((a, i) => (
+        <div key={i} className={`text-xs ${a.color}`}>• {a.text}</div>
+      ))}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
