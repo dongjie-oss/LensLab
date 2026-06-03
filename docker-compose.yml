@@ -1,0 +1,14 @@
+version: "3.8"
+
+services:
+  exposure-lab:
+    image: registry.cn-hangzhou.aliyuncs.com/exposure-lab/exposure-lab:latest
+    container_name: exposure-lab
+    restart: unless-stopped
+    ports:
+      - "8888:8765"
+    volumes:
+      - ./data/uploads:/app/backend/uploads
+      - ./data/results:/app/backend/results
+    environment:
+      - TZ=Asia/Shanghai
