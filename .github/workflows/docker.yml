@@ -1,4 +1,4 @@
-name: Build & Push Docker Image
+name: Build & Push Docker Image to Aliyun ACR
 
 on:
   push:
@@ -9,45 +9,33 @@ on:
   workflow_dispatch:
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  ACR_REGISTRY: registry.cn-hangzhou.aliyuncs.com
+  ACR_NAMESPACE: ${{ vars.ACR_NAMESPACE }}
+  IMAGE_NAME: exposure-lab
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+      - name: Login to Aliyun ACR
+        uses: aliyun/acr-login@v1
         with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,format=short
+          login-server: ${{ env.ACR_REGISTRY }}
+          region-id: cn-hangzhou
+          access-key-id: ${{ secrets.ACR_ACCESS_KEY_ID }}
+          access-key-secret: ${{ secrets.ACR_ACCESS_KEY_SECRET }}
 
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          tags: |
+            ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
