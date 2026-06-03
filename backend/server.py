@@ -16,13 +16,15 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 try:
+    from . import __version__
     from .analyzer import analyze_image, result_to_dict, GRID_MODES
     from .ai_analyzer import analyze_with_ai, AI_ENABLED
 except ImportError:
+    import __version__
     from analyzer import analyze_image, result_to_dict, GRID_MODES
     from ai_analyzer import analyze_with_ai, AI_ENABLED
 
-app = FastAPI(title="Exposure Lab API", version="1.0.0")
+app = FastAPI(title="Exposure Lab API", version=__version__)
 
 app.add_middleware(
     CORSMiddleware,
