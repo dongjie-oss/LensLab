@@ -1,4 +1,4 @@
-# Exposure Lab Render 部署配置
+# LensLab Render 部署配置
 services:
   - type: web
     name: exposure-lab

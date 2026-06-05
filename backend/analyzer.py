@@ -76,16 +76,6 @@ GRID_MODES = {
         "cols": 1,
         "labels": ["中心点"],
     },
-    "spot": {
-        "name": "重点测光",
-        "rows": 3,
-        "cols": 3,
-        "labels": [
-            ["周边1", "周边2", "周边3"],
-            ["周边4", "中心重点", "周边5"],
-            ["周边6", "周边7", "周边8"],
-        ],
-    },
 }
 
 
@@ -130,7 +120,7 @@ def analyze_image(
     
     Args:
         image_path: 图片路径
-        mode: 区域模式 ("9"/"16"/"25"/"center"/"spot")
+        mode: 区域模式 ("9"/"16"/"25"/"center")
         ev_method: EV计算方法 ("standard"/"strict"/"loose")
         custom_model: 自定义模型参数（预留）
     
@@ -192,6 +182,72 @@ def analyze_image(
     # 计算直方图
     histogram_arr, _ = np.histogram(arr, bins=256, range=(0, 256))
     # 压缩到32个bin便于前端展示
+    histogram = [
+        int(np.sum(histogram_arr[i * 8 : (i + 1) * 8])) for i in range(32)
+    ]
+
+    return AnalysisResult(
+        metering_points=metering_points,
+        mode=mode,
+        avg_brightness=round(total_brightness / count, 1),
+        histogram=histogram,
+        width=w,
+        height=h,
+    )
+
+
+def reanalyze_from_array(
+    arr: np.ndarray,
+    h: int,
+    w: int,
+    mode: str,
+    ev_method: str = "standard",
+    custom_model: Optional[dict] = None,
+) -> AnalysisResult:
+    """
+    从缓存的灰度数组重新分析，避免重复解码图片
+    analyze_image() 的快速版本 - 跳过 Image.open/convert/np.array
+    """
+    grid_config = GRID_MODES.get(mode, GRID_MODES["9"])
+    rows = grid_config["rows"]
+    cols = grid_config["cols"]
+    labels = grid_config["labels"]
+
+    cell_h = h / rows
+    cell_w = w / cols
+
+    metering_points = []
+    total_brightness = 0
+    count = 0
+
+    for r in range(rows):
+        for c in range(cols):
+            y1 = int(r * cell_h)
+            y2 = int((r + 1) * cell_h) if r < rows - 1 else h
+            x1 = int(c * cell_w)
+            x2 = int((c + 1) * cell_w) if c < cols - 1 else w
+
+            region = arr[y1:y2, x1:x2]
+            avg = float(np.mean(region))
+            ev = brightness_to_ev(avg, ev_method)
+
+            cx = (x1 + x2) // 2
+            cy = (y1 + y2) // 2
+
+            if custom_model and "weights" in custom_model:
+                weight = custom_model["weights"].get(labels[r][c], 1.0)
+                ev = round(ev * weight, 1)
+
+            point = MeteringPoint(
+                name=labels[r][c], ev=ev,
+                brightness=int(avg),
+                cx=cx, cy=cy, x1=x1, y1=y1, x2=x2, y2=y2,
+            )
+            metering_points.append(point)
+            total_brightness += avg
+            count += 1
+
+    histogram_arr, _ = np.histogram(arr, bins=256, range=(0, 256))
     histogram = [
         int(np.sum(histogram_arr[i * 8 : (i + 1) * 8])) for i in range(32)
     ]

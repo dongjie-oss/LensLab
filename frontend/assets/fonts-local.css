@@ -1,0 +1,9 @@
+/* Inter */
+@font-face { font-family: 'Inter'; font-weight: 300; src: url('./fonts/Inter-300.ttf') format('truetype'); }
+@font-face { font-family: 'Inter'; font-weight: 400; src: url('./fonts/Inter-400.ttf') format('truetype'); }
+@font-face { font-family: 'Inter'; font-weight: 500; src: url('./fonts/Inter-500.ttf') format('truetype'); }
+@font-face { font-family: 'Inter'; font-weight: 600; src: url('./fonts/Inter-600.ttf') format('truetype'); }
+@font-face { font-family: 'Inter'; font-weight: 700; src: url('./fonts/Inter-700.ttf') format('truetype'); }
+/* JetBrains Mono */
+@font-face { font-family: 'JetBrains Mono'; font-weight: 400; src: url('./fonts/JetBrainsMono-400.ttf') format('truetype'); }
+@font-face { font-family: 'JetBrains Mono'; font-weight: 500; src: url('./fonts/JetBrainsMono-500.ttf') format('truetype'); }

@@ -27,3 +27,6 @@ Thumbs.db
 
 # Runtime data (mounted via Docker - never commit)
 data/
+
+# Node.js
+frontend/node_modules/

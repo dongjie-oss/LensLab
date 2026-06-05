@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Exposure Lab - 启动脚本
+LensLab - 启动脚本
 """
 
 import os
@@ -32,7 +32,7 @@ def start_server():
     from backend.server import app
     import uvicorn
     port = 8765
-    print(f"\n🚀 Exposure Lab 已启动！")
+    print(f"\n🚀 镜头演算室 已启动！")
     print(f"   本地访问: http://localhost:{port}")
     print(f"   Ctrl+C 停止服务\n")
     uvicorn.run(app, host="0.0.0.0", port=port)
@@ -40,7 +40,7 @@ def start_server():
 
 def main():
     print("╔══════════════════════════════════════╗")
-    print("║      ⚡ 曝光检测大师 · Exposure Lab   ║")
+    print("║      ⚡ 镜头演算室 · LensLab   ║")
     print("╚══════════════════════════════════════╝")
     if not check_dependencies():
         install_dependencies()

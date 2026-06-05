@@ -5,15 +5,23 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        - BUILDKIT_INLINE_CACHE=1
+    image: ${ACR_REGISTRY:-registry.cn-hangzhou.aliyuncs.com}/${ACR_NAMESPACE:-your-namespace}/exposure-lab:latest
     container_name: exposure-lab
     restart: unless-stopped
     ports:
-      - "8888:8765"
+      - "8765:8765"
     volumes:
-      - ./data/uploads:/app/backend/uploads
-      - ./data/results:/app/backend/results
+      - ./data:/app/data
     environment:
       - TZ=Asia/Shanghai
+      - DATA_DIR=/app/data
+      # ACR 仓库配置（用于版本检测）
+      - ACR_REGISTRY=${ACR_REGISTRY:-registry.cn-hangzhou.aliyuncs.com}
+      - ACR_NAMESPACE=${ACR_NAMESPACE:-your-namespace}
+      - ACR_REPO=${ACR_REPO:-exposure-lab}
+      # AI 配置
       - AI_API_KEY=${AI_API_KEY:-}
       - AI_BASE_URL=${AI_BASE_URL:-https://api.openai.com/v1}
       - AI_MODEL=${AI_MODEL:-gpt-4o-mini}
