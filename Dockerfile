@@ -1,23 +1,52 @@
-FROM python:3.12
+# =============================================
+# 镜头演算室 · LensLab v1.0.0
+# 三阶段构建：Node 编译 → Python 依赖 → 精简运行时
+# 目标：从 2.4GB 压到 ~300-500MB
+# =============================================
+
+# ---- Stage 1: 前端编译 ----
+FROM node:20-alpine AS frontend-builder
+
+WORKDIR /app/frontend
+
+# 只复制依赖声明，利用 Docker 缓存层
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts 2>/dev/null || npm install --omit=dev --ignore-scripts
+
+# 复制前端源码并编译
+COPY frontend/ ./
+RUN node compile.js
+
+# ---- Stage 2: Python 依赖 ----
+FROM python:3.11-slim AS python-builder
 
 WORKDIR /app
 
-# 安装依赖
 COPY backend/requirements.txt .
-RUN pip install --no-cache-dir -U pip setuptools wheel && \
-    pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt
+RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
-# 复制代码
+# ---- Stage 3: 运行时（精简镜像）----
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# 仅复制已安装的 Python 包
+COPY --from=python-builder /install /usr/local
+
+# 复制后端代码
 COPY backend/ ./backend/
-COPY frontend/ ./frontend/
 
-# 创建数据目录（Docker 挂载点）
-RUN mkdir -p /app/data /app/backend/uploads /app/backend/results
+# 复制前端编译产物（仅 dist 文件，不含 node_modules）
+COPY --from=frontend-builder /app/frontend/index.html ./frontend/index.html
+COPY --from=frontend-builder /app/frontend/assets ./frontend/assets
 
-# 写入版本文件（CI 构建时会覆盖）
+# 数据目录（挂载点）
+RUN mkdir -p /app/data /app/data/uploads /app/data/results
+
+# 版本文件
 RUN echo '{"version":"1.0.0","build_time":"dev","git_sha":"dev"}' > /app/version.json
 
-# 复制入口脚本
+# 入口脚本
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh
 

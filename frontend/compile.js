@@ -1,5 +1,8 @@
+const path = require('path');
 const babel = require('@babel/core');
 const fs = require('fs');
+
+const FRONTEND_DIR = __dirname; // 当前目录 = frontend/
 
 const files = [
   { jsx: 'app.jsx', out: 'assets/app.compiled.js' },
@@ -7,7 +10,9 @@ const files = [
 ];
 
 for (const { jsx, out } of files) {
-  const jsxCode = fs.readFileSync('/home/openclaw/.openclaw/workspace/exposure-lab/frontend/' + jsx, 'utf8');
+  const jsxPath = path.join(FRONTEND_DIR, jsx);
+  const outPath = path.join(FRONTEND_DIR, out);
+  const jsxCode = fs.readFileSync(jsxPath, 'utf8');
   console.log(`Compiling ${jsx}: ${jsxCode.length} chars`);
 
   try {
@@ -16,7 +21,8 @@ for (const { jsx, out } of files) {
       filename: jsx,
     });
     console.log(`  ✅ ${jsx} -> ${out}: ${result.code.length} chars`);
-    fs.writeFileSync('/home/openclaw/.openclaw/workspace/exposure-lab/frontend/' + out, result.code);
+    fs.mkdirSync(path.dirname(outPath), { recursive: true });
+    fs.writeFileSync(outPath, result.code);
   } catch (e) {
     console.error(`  ❌ ${jsx} failed:`, e.message);
     if (e.loc) {

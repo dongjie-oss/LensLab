@@ -1,12 +1,12 @@
 #!/bin/bash
 set -e
 
-# Exposure Lab Entrypoint
+# LensLab Entrypoint
 # 1. 初始化配置（新建/迁移）
 # 2. 启动服务
 
 echo "======================================"
-echo " Exposure Lab 启动中..."
+echo " 镜头演算室 · LensLab 启动中..."
 echo " DATA_DIR: ${DATA_DIR:-/app/data}"
 echo "======================================"
 

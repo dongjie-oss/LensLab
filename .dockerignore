@@ -1,7 +1,36 @@
+# 运行时数据（Docker volume 挂载）
 data/
+
+# Git
 .git/
+.gitignore
+
+# 文档和截图（非运行必需）
 *.md
-test_*.py
-__pycache__/
+*.png
+*.jpg
+*.jpeg
+
+# 本地环境
 .env
-node_modules/
+.env.local
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+
+# Python 本地缓存
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+*.egg
+.venv/
+venv/
+
+# 前端本地 node_modules（CI 中会重新 npm ci）
+frontend/node_modules/
+
+# Docker Compose（非构建所需）
+docker-compose.yml
