@@ -7,7 +7,7 @@ services:
       dockerfile: Dockerfile
       args:
         - BUILDKIT_INLINE_CACHE=1
-    image: ${ACR_REGISTRY:-registry.cn-hangzhou.aliyuncs.com}/${ACR_NAMESPACE:-your-namespace}/exposure-lab:latest
+    image: registry.cn-hangzhou.aliyuncs.com/exposure-lab/exposure-lab:latest
     container_name: exposure-lab
     restart: unless-stopped
     ports:
