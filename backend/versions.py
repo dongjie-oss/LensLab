@@ -33,7 +33,7 @@ DEFAULT_VERSIONS = {
         "digest": "",
         "data_version": CURRENT_DATA_VERSION,
         "date": "2026-06-06",
-        "notes": "v" + __version__ + " — 修复5项功能问题：AI按钮显隐/面板关闭/默认模型/Docker compose/图片响应式",
+        "notes": "v" + __version__ + " — AI生图速度优化、无限想象优先级系统、elif分支重构",
     },
     "changelog": [
         {
@@ -45,7 +45,7 @@ DEFAULT_VERSIONS = {
         {
             "version": __version__,
             "date": "2026-06-06",
-            "notes": "修复5项功能问题：AI按钮显隐/面板关闭/默认模型/Docker compose/图片响应式",
+            "notes": "AI生图速度优化、无限想象优先级系统、elif分支重构",
             "digest": "",
         }
     ],
@@ -53,7 +53,7 @@ DEFAULT_VERSIONS = {
 
 # ACR 仓库配置（公开仓库，查标签无需认证）
 ACR_REGISTRY = os.getenv("ACR_REGISTRY", "registry.cn-hangzhou.aliyuncs.com")
-ACR_NAMESPACE = os.getenv("ACR_NAMESPACE", "your-namespace")
+ACR_NAMESPACE = os.getenv("ACR_NAMESPACE", "exposure-lab")
 ACR_REPO = os.getenv("ACR_REPO", "exposure-lab")
 
 
