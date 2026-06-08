@@ -51,10 +51,12 @@ DEFAULT_VERSIONS = {
     ],
 }
 
-# ACR 仓库配置（公开仓库，查标签无需认证）
+# ACR 仓库配置
 ACR_REGISTRY = os.getenv("ACR_REGISTRY", "registry.cn-hangzhou.aliyuncs.com")
 ACR_NAMESPACE = os.getenv("ACR_NAMESPACE", "exposure-lab")
 ACR_REPO = os.getenv("ACR_REPO", "exposure-lab")
+ACR_USERNAME = os.getenv("ACR_USERNAME", "")
+ACR_PASSWORD = os.getenv("ACR_PASSWORD", "")
 
 
 def load_versions() -> dict:
@@ -102,6 +104,10 @@ def _fetch_acr_tags() -> list[str]:
             logger.info(f"ACR 返回 {len(tags)} 个标签: {tags}")
             return tags
     except urllib.error.HTTPError as e:
+        if e.code == 401 and (ACR_USERNAME and ACR_PASSWORD):
+            # 需要认证，重试带 token 的请求
+            logger.info("ACR 需要认证，尝试使用 Token 登录")
+            return _fetch_acr_tags_with_auth()
         if e.code == 404:
             logger.warning(f"ACR 仓库不存在: {ACR_NAMESPACE}/{ACR_REPO}")
         else:
@@ -109,6 +115,31 @@ def _fetch_acr_tags() -> list[str]:
         return []
     except Exception as e:
         logger.warning(f"ACR API 请求失败: {e}")
+        return []
+
+
+def _fetch_acr_tags_with_auth() -> list[str]:
+    """带 Token 登录的 ACR 查询"""
+    url = f"https://{ACR_REGISTRY}/v2/{ACR_NAMESPACE}/{ACR_REPO}/tags/list"
+    logger.info(f"带认证查询 ACR 标签: {url}")
+    
+    import base64
+    credentials = f"{ACR_USERNAME}:{ACR_PASSWORD}"
+    encoded = base64.b64encode(credentials.encode()).decode()
+    
+    req = urllib.request.Request(url, headers={
+        "User-Agent": "exposure-lab/1.0",
+        "Authorization": f"Basic {encoded}",
+    })
+    
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            tags = data.get("tags", []) or []
+            logger.info(f"ACR 返回 {len(tags)} 个标签: {tags}")
+            return tags
+    except urllib.error.HTTPError as e:
+        logger.warning(f"ACR 认证查询失败: {e.code}")
         return []
 
 

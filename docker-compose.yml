@@ -21,4 +21,7 @@ services:
       - ACR_REGISTRY=${ACR_REGISTRY:-registry.cn-hangzhou.aliyuncs.com}
       - ACR_NAMESPACE=${ACR_NAMESPACE:-exposure-lab}
       - ACR_REPO=${ACR_REPO:-exposure-lab}
+      # ACR 认证（用于版本检测查询）
+      - ACR_USERNAME=${ACR_USERNAME:-}
+      - ACR_PASSWORD=${ACR_PASSWORD:-}
       # AI 配置（已移除，改由 config.json 管理）
