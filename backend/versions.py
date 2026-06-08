@@ -118,6 +118,42 @@ def _fetch_acr_tags() -> list[str]:
         return []
 
 
+# ===================== 版本检测 =====================
+
+# GitHub 仓库配置（用于版本检测）
+GITHUB_REPO = os.getenv("GITHUB_REPO", "dongjie-oss/exposure-lab")
+
+
+def _fetch_github_tags() -> list[str]:
+    """
+    通过 git ls-remote 查询 GitHub 远端 tag。
+    无需网络认证，Docker 容器内自带 git。
+    注意：容器内需能访问 GitHub（git clone 或 fetch 能通）。
+    如果不行，fallback 到 ACR 查询。
+    """
+    import subprocess
+    
+    tags = []
+    try:
+        result = subprocess.run(
+            ["git", "ls-remote", "--tags", "https://github.com", GITHUB_REPO],
+            capture_output=True, text=True, timeout=15
+        )
+        if result.returncode == 0:
+            for line in result.stdout.strip().split("\n"):
+                if line:
+                    parts = line.split("\t")
+                    ref = parts[1] if len(parts) > 1 else ""
+                    if ref.startswith("refs/tags/v"):
+                        tag = ref.replace("refs/tags/", "")
+                        tags.append(tag)
+            logger.info(f"GitHub 返回 {len(tags)} 个 tag: {tags}")
+    except Exception as e:
+        logger.warning(f"GitHub tag 查询失败: {e}")
+    
+    return tags
+
+
 def _fetch_acr_tags_with_auth() -> list[str]:
     """带 Token 登录的 ACR 查询"""
     url = f"https://{ACR_REGISTRY}/v2/{ACR_NAMESPACE}/{ACR_REPO}/tags/list"
@@ -161,9 +197,7 @@ def _find_latest_version(tags: list[str]) -> Optional[str]:
 def check_for_update() -> dict:
     """
     检查是否有可用更新。
-    1. 查 ACR 标签列表
-    2. 找最新语义化版本
-    3. 和当前版本对比
+    优先查 ACR 远端 tag（带认证 fallback），失败后提示手动升级。
     """
     current = get_current_version()
     current_ver = current.get("version", __version__)
@@ -172,12 +206,13 @@ def check_for_update() -> dict:
     tags = _fetch_acr_tags()
     latest = _find_latest_version(tags)
 
+    # 如果 ACR 也查不到
     if not latest:
         return {
             "current_version": current_ver,
             "latest_version": None,
             "update_available": False,
-            "message": "无法获取远端版本信息（ACR 查询失败）",
+            "message": "无法获取远端版本信息，请手动检查",
         }
 
     # 对比
