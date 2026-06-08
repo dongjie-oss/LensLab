@@ -60,7 +60,26 @@ ACR_PASSWORD = os.getenv("ACR_PASSWORD", "")
 
 
 def load_versions() -> dict:
-    return load_data(VERSIONS_FILE, lambda: DEFAULT_VERSIONS.copy())
+    versions = load_data(VERSIONS_FILE, lambda: DEFAULT_VERSIONS.copy())
+    
+    # 自动升级：如果持久化的 changelog 版本比代码默认值旧，就更新
+    default_changelog = DEFAULT_VERSIONS.get("changelog", [])
+    persisted_changelog = versions.get("changelog", [])
+    
+    if default_changelog and persisted_changelog:
+        # 比较默认值里最新的一条和持久化里最新的一条
+        default_latest = default_changelog[0].get("version", "") if default_changelog else ""
+        persisted_latest = persisted_changelog[0].get("version", "") if persisted_changelog else ""
+        
+        if default_latest and default_latest != persisted_latest:
+            # 用默认值覆盖旧的 changelog
+            versions["changelog"] = [item.copy() for item in default_changelog]
+            # 也更新 current 信息
+            versions["current"] = DEFAULT_VERSIONS["current"].copy()
+            save_versions(versions)
+            logger.info(f"版本信息已自动更新: {persisted_latest} -> {default_latest}")
+    
+    return versions
 
 
 def save_versions(data: dict):
