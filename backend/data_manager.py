@@ -26,14 +26,14 @@ class DataVersionError(Exception):
 
 def load_data(path: Path, default_factory: callable) -> dict:
     """
-    加载数据文件，自动检测版本并迁移。
+    加载数据文件，自动检测版本并迁移，自动补缺失字段。
 
     Args:
         path: 数据文件路径
         default_factory: 文件不存在时调用的默认工厂函数，返回默认 dict
 
     Returns:
-        迁移到最新版本的数据 dict
+        迁移到最新版本、已补全缺失字段的数据 dict
     """
     if not path.exists():
         data = default_factory()
@@ -54,7 +54,6 @@ def load_data(path: Path, default_factory: callable) -> dict:
     if not isinstance(raw, dict) or "data_version" not in raw:
         logger.info(f"{path.name}: 检测到旧版本格式，准备迁移")
         if isinstance(raw, list):
-            # 旧 history.json 是纯列表，包装成 dict
             raw = {"data_version": 0, "items": raw}
         else:
             raw["data_version"] = 0
@@ -64,7 +63,40 @@ def load_data(path: Path, default_factory: callable) -> dict:
         raw = _migrate_data(path, raw, version, CURRENT_DATA_VERSION)
         _save_data(path, raw)
 
-    return raw
+    # 自动补缺失字段：对比默认值，把缺的字段填上
+    defaults = default_factory()
+    data = _merge_defaults(raw, defaults)
+
+    # 如果有字段被补充，写回文件
+    if data is not raw:
+        _save_data(path, data)
+
+    return data
+
+
+def _merge_defaults(data: dict, defaults: dict) -> dict:
+    """
+    递归对比默认值，把缺失的字段补上。
+    已有字段保留原值（用户配置不被覆盖），只补新增字段。
+    """
+    changed = False
+    result = data.copy()
+    
+    for key, default_val in defaults.items():
+        if key == "data_version":
+            continue
+        if key not in result:
+            result[key] = default_val.copy() if isinstance(default_val, dict) else default_val
+            changed = True
+            logger.info(f"  补字段: {key}")
+        elif isinstance(default_val, dict) and isinstance(result[key], dict):
+            # 递归补嵌套 dict 的缺失字段
+            sub = _merge_defaults(result[key], default_val)
+            if sub is not result[key]:
+                result[key] = sub
+                changed = True
+    
+    return result if changed else data
 
 
 def _migrate_data(path: Path, data: dict, from_version: int, to_version: int) -> dict:
