@@ -99,7 +99,7 @@ def _get_ai_client():
     ai_cfg = get_ai_config()
     return OpenAI(
         api_key=ai_cfg["api_key"],
-        base_url=ai_cfg.get("base_url", "https://api.openai.com/v1"),
+        base_url=ai_cfg.get("base_url", "https://apihub.agnes-ai.com/v1"),
     )
 
 def _analyze_with_ai(mode_name, avg_brightness, metering_points, scene="", histogram=None, img_width=0, img_height=0):
@@ -157,7 +157,7 @@ def _analyze_with_ai(mode_name, avg_brightness, metering_points, scene="", histo
 
     try:
         resp = client.chat.completions.create(
-            model=ai_cfg.get("model", "gpt-4o-mini"),
+            model=ai_cfg.get("model", "agnes-2.0-flash"),
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": "\n".join(lines)},
@@ -301,17 +301,24 @@ def api_change_username(req: ChangeUsernameRequest, authorization: Optional[str]
     return {"status": "ok", "message": "用户名修改成功"}
 
 @app.get("/api/settings/ai")
-def get_ai_settings(authorization: Optional[str] = Header(None)):
-    _require_auth(authorization)
+def get_ai_settings():
+    """获取 AI 设置（公开）——不暴露完整 API Key，同时返回文字和图片模型状态"""
     ai = get_ai_config()
     key = ai.get("api_key", "")
     masked_key = key[:6] + "****" + key[-4:] if len(key) > 10 else "****" if key else ""
+    ai_img = get_ai_image_config()
+    img_key = ai_img.get("api_key", "")
     return {
         "enabled": ai.get("enabled", False),
         "has_saved": bool(key),
         "api_key_masked": masked_key,
-        "base_url": ai.get("base_url", "https://api.openai.com/v1"),
-        "model": ai.get("model", "gpt-4o-mini"),
+        "base_url": ai.get("base_url", "https://apihub.agnes-ai.com/v1"),
+        "model": ai.get("model", "agnes-2.0-flash"),
+        "image_enabled": ai_img.get("enabled", False),
+        "image_has_saved": bool(img_key),
+        "image_api_key_masked": img_key[:6] + "****" + img_key[-4:] if len(img_key) > 10 else ("****" if img_key else ""),
+        "image_base_url": ai_img.get("base_url", "https://apihub.agnes-ai.com/v1"),
+        "image_model": ai_img.get("model", "agnes-image-2.1-flash"),
     }
 
 @app.post("/api/settings/ai/test")
@@ -380,8 +387,8 @@ def update_ai_settings(req: AIConfigRequest, authorization: Optional[str] = Head
 
 
 @app.get("/api/settings/ai/image")
-def get_img_ai_settings(authorization: Optional[str] = Header(None)):
-    _require_auth(authorization)
+def get_img_ai_settings():
+    """获取 AI 生图设置（公开）——不暴露完整 API Key"""
     ai = get_ai_image_config()
     key = ai.get("api_key", "")
     masked_key = key[:6] + "****" + key[-4:] if len(key) > 10 else "****" if key else ""
@@ -561,6 +568,85 @@ def delete_history(file_id: str):
     for p in RESULT_DIR.glob(f"{file_id}*"):
         p.unlink(missing_ok=True)
     return {"status": "deleted"}
+
+
+@app.post("/api/history/from-generated")
+async def add_generated_to_history(image_url: str = Form(...)):
+    """将 AI 生成的图片添加到历史记录"""
+    try:
+        # 解析图片路径 — 处理各种 URL 格式
+        tmp = None
+        if image_url.startswith("/generated/"):
+            src_path = DATA_DIR / image_url.lstrip("/")
+        elif image_url.startswith("http"):
+            # 检查是否指向本机，避免自己请求自己导致死锁
+            from urllib.parse import urlparse
+            parsed = urlparse(image_url)
+            host = parsed.hostname or ""
+            port = parsed.port or (443 if parsed.scheme == "https" else 80)
+            is_local = host in ("localhost", "127.0.0.1", "0.0.0.0", "") or host.startswith("10.") or host.startswith("192.168.")
+            if is_local:
+                # 本机 URL → 直接转本地路径
+                path_part = parsed.path
+                if path_part.startswith("/generated/"):
+                    src_path = DATA_DIR / path_part.lstrip("/")
+                else:
+                    src_path = DATA_DIR / path_part.lstrip("/")
+            else:
+                # 远程 URL → 下载
+                tmp = DATA_DIR / 'generated' / f"tmp_{uuid.uuid4().hex[:12]}.png"
+                import urllib.request as _urllib
+                _urllib.urlretrieve(image_url, str(tmp))
+                src_path = tmp
+        else:
+            src_path = Path(image_url)
+
+        if not src_path or not src_path.exists():
+            raise HTTPException(400, f"图片文件不存在: {src_path}")
+
+        file_id = uuid.uuid4().hex
+        dest = UPLOAD_DIR / f"{file_id}.png"
+        shutil.copy2(str(src_path), str(dest))
+
+        # 清理临时文件
+        if tmp and tmp.exists():
+            tmp.unlink(missing_ok=True)
+
+        result_data = {
+            "file_id": file_id,
+            "original_name": f"ai-generated-{file_id[:8]}.png",
+            "timestamp": datetime.now().isoformat(),
+            "mode_name": "ai-generated",
+            "width": 0,
+            "height": 0,
+            "avg_brightness": 0,
+            "metering_points": [],
+            "histogram": [],
+            "ai_enabled": False,
+            "source": "text-to-image",
+        }
+        result_path = RESULT_DIR / f"{file_id}.json"
+        save_data(result_path, result_data)
+
+        history = load_history()
+        history.append({
+            "file_id": file_id,
+            "original": f"uploads/{file_id}.png",
+            "result": f"results/{file_id}.json",
+            "filename": f"ai-generated-{file_id[:8]}.png",
+            "timestamp": datetime.now().isoformat(),
+        })
+        save_history(history)
+        cleanup_history()
+
+        return {"ok": True, "file_id": file_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"添加生成图到历史失败: {e}")
+        return {"ok": False, "error": str(e)}
+
+
 
 @app.get("/api/ai-advice/{file_id}")
 def get_ai_advice(file_id: str):
@@ -767,9 +853,9 @@ async def generate_ai_image(
 # ==================== AI 生图（新版） ====================
 
 try:
-    from .ai_generator import start_generation, get_task, cancel_generation
+    from .ai_generator import start_generation, start_text_generation, get_task, cancel_generation
 except ImportError:
-    from ai_generator import start_generation, get_task, cancel_generation
+    from ai_generator import start_generation, start_text_generation, get_task, cancel_generation
 
 
 @app.post("/api/generate/similar")
@@ -791,10 +877,63 @@ async def generate_similar(file_id: str = Form(...), global_style: str = Form(No
         sim = similar.lower() in ('true', '1', 'yes')
         n = int(num_images) if num_images else 9
         n = max(1, min(n, 9))
+        print(f"[DEBUG] generate/similar called: similar={sim}, num_images={n}, global_style={global_style_data}, prompts={len(prompts_list)}")
         task_id = start_generation(file_id, mode="style", custom_prompts=prompts_list, similar=sim, global_style=global_style_data, num_images=n)
         return {"ok": True, "task_id": task_id}
     except Exception as e:
         logger.error(f"Failed to start generation: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/api/generate/custom-prompt")
+async def generate_custom_prompt(file_id: str = Form(...), custom_prompt: str = Form(...)):
+    """AI 生成：基于原图 + 用户自定义提示词，只生成1张占满3×3九宫格"""
+    try:
+        if not custom_prompt or not custom_prompt.strip():
+            return {"ok": False, "error": "自定义提示词不能为空"}
+        custom_prompts_list = [{"name": "自定义提示词", "content": custom_prompt.strip()}]
+        task_id = start_generation(file_id, mode="style", custom_prompts=custom_prompts_list, similar=False, global_style=None, num_images=1)
+        return {"ok": True, "task_id": task_id}
+    except Exception as e:
+        logger.error(f"Failed to start custom-prompt generation: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/api/generate/text-image")
+async def generate_text_image(
+    text: str = Form(...),
+    global_style: str = Form(None),
+    custom_prompts_json: str = Form(None),
+    similar: str = Form("false"),
+    num_images: str = Form("9"),
+):
+    """纯文字生图：无需上传，输入文字描述直接生成九宫格"""
+    try:
+        if not text or not text.strip():
+            return {"ok": False, "error": "文字描述不能为空"}
+        sim = similar.lower() in ("true", "1", "yes")
+        n = int(num_images) if num_images else 9
+        n = max(1, min(n, 9))
+        gs = None
+        if global_style:
+            try:
+                gs = json.loads(global_style)
+            except Exception:
+                pass
+        prompts_list = None
+        if custom_prompts_json:
+            try:
+                prompts_list = json.loads(custom_prompts_json)
+            except Exception:
+                pass
+        task_id = start_text_generation(
+            text=text.strip(), mode="text",
+            custom_prompts=prompts_list, similar=sim,
+            global_style=gs, num_images=n,
+        )
+        return {"ok": True, "task_id": task_id}
+    except Exception as e:
+        logger.error(f"Failed to start text-image generation: {e}")
         return {"ok": False, "error": str(e)}
 
 

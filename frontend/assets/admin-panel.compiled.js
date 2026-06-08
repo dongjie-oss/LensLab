@@ -46,6 +46,9 @@ function AdminPanel({
   const [verStatus, setVerStatus] = useState('loading');
   const [changelog, setChangelog] = useState([]);
   const [verErr, setVerErr] = useState('');
+  const [verPage, setVerPage] = useState(1);
+  const [verDetail, setVerDetail] = useState(null);
+  const VER_PER_PAGE = 5;
   const apiCall = async (path, opts = {}) => {
     const res = await fetch(path, {
       ...opts,
@@ -207,6 +210,56 @@ function AdminPanel({
     }
   };
 
+  // ---- 开关切换（独立于保存按钮） ----
+  const toggleAiEnabled = async () => {
+    const newEnabled = !aiEnabled;
+    if (newEnabled && (!aiBaseUrl || !aiModel || !aiHasSaved)) {
+      setAiTestMsg('❌ 无法开启：请先配置并保存 API Key、Base URL 和 Model');
+      setTimeout(() => setAiTestMsg(''), 4000);
+      return;
+    }
+    setAiEnabled(newEnabled);
+    try {
+      const res = await apiCall('/api/settings/ai', {
+        method: 'POST',
+        body: JSON.stringify({
+          enabled: newEnabled
+        })
+      });
+      if (!res.ok) throw new Error('保存失败');
+      setAiTestMsg(newEnabled ? '✓ AI 已启用' : '✓ AI 已禁用');
+      setTimeout(() => setAiTestMsg(''), 3000);
+    } catch (e) {
+      setAiEnabled(!newEnabled);
+      setAiTestMsg('✕ 操作失败: ' + e.message);
+      setTimeout(() => setAiTestMsg(''), 4000);
+    }
+  };
+  const toggleImgEnabled = async () => {
+    const newEnabled = !imgEnabled;
+    if (newEnabled && (!imgBaseUrl || !imgModel || !imgHasSaved)) {
+      setImgTestMsg('❌ 无法开启：请先配置并保存 API Key、Base URL 和 Model');
+      setTimeout(() => setImgTestMsg(''), 4000);
+      return;
+    }
+    setImgEnabled(newEnabled);
+    try {
+      const res = await apiCall('/api/settings/ai/image', {
+        method: 'POST',
+        body: JSON.stringify({
+          enabled: newEnabled
+        })
+      });
+      if (!res.ok) throw new Error('保存失败');
+      setImgTestMsg(newEnabled ? '✓ 图片模型已启用' : '✓ 图片模型已禁用');
+      setTimeout(() => setImgTestMsg(''), 3000);
+    } catch (e) {
+      setImgEnabled(!newEnabled);
+      setImgTestMsg('✕ 操作失败: ' + e.message);
+      setTimeout(() => setImgTestMsg(''), 4000);
+    }
+  };
+
   // ---- AI 文字模型 ----
   const loadAiConfig = async () => {
     try {
@@ -359,6 +412,7 @@ function AdminPanel({
   const loadVersions = async () => {
     setVerStatus('loading');
     setVerErr('');
+    setVerPage(1); // Bug 修复：重置页码
     try {
       const res = await apiCall('/api/versions');
       if (res.ok) {
@@ -450,8 +504,8 @@ function AdminPanel({
       testMsg,
       onTest,
       onSave,
+      onToggle,
       enabled,
-      setEnabled,
       saveLabel
     } = config;
     return /*#__PURE__*/React.createElement("div", {
@@ -461,7 +515,7 @@ function AdminPanel({
     }, /*#__PURE__*/React.createElement("span", {
       className: "text-sm text-slate-300"
     }, "\u542F\u7528 ", title), /*#__PURE__*/React.createElement("button", {
-      onClick: () => setEnabled(!enabled),
+      onClick: onToggle,
       className: 'relative w-11 h-6 rounded-full transition-all ' + (enabled ? 'bg-blue-500' : 'bg-slate-600')
     }, /*#__PURE__*/React.createElement("span", {
       className: 'absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ' + (enabled ? 'left-5' : 'left-0.5')
@@ -527,8 +581,18 @@ function AdminPanel({
     className: "text-xs text-slate-500 hover:text-red-400 transition-colors"
   }, "\u9000\u51FA"), /*#__PURE__*/React.createElement("button", {
     onClick: onClose,
-    className: "text-slate-500 hover:text-white transition-colors text-xl leading-none"
-  }, "\xD7"))), /*#__PURE__*/React.createElement("div", {
+    className: "text-slate-500 hover:text-white transition-colors"
+  }, /*#__PURE__*/React.createElement("svg", {
+    className: "w-5 h-5",
+    fill: "none",
+    stroke: "currentColor",
+    viewBox: "0 0 24 24"
+  }, /*#__PURE__*/React.createElement("path", {
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    strokeWidth: 2,
+    d: "M6 18L18 6M6 6l12 12"
+  }))))), /*#__PURE__*/React.createElement("div", {
     className: "flex border-b border-slate-800"
   }, ['ai', 'account', 'version'].map(t => /*#__PURE__*/React.createElement("button", {
     key: t,
@@ -567,8 +631,8 @@ function AdminPanel({
     testMsg: aiTestMsg,
     onTest: testAiApi,
     onSave: saveAiConfig,
+    onToggle: toggleAiEnabled,
     enabled: aiEnabled,
-    setEnabled: setAiEnabled,
     saveLabel: '保存文字模型配置'
   }), /*#__PURE__*/React.createElement("div", {
     className: "border-t border-slate-700/50 pt-4 mt-5 mb-3"
@@ -600,8 +664,8 @@ function AdminPanel({
     testMsg: imgTestMsg,
     onTest: testImgApi,
     onSave: saveImgConfig,
+    onToggle: toggleImgEnabled,
     enabled: imgEnabled,
-    setEnabled: setImgEnabled,
     saveLabel: '保存图片模型配置'
   })), activeTab === 'account' && /*#__PURE__*/React.createElement("div", {
     className: "space-y-6"
@@ -677,20 +741,83 @@ function AdminPanel({
     className: "text-[10px] text-slate-500 uppercase tracking-wider mb-2"
   }, "\u66F4\u65B0\u65E5\u5FD7"), /*#__PURE__*/React.createElement("div", {
     className: "space-y-2"
-  }, changelog.map((entry, i) => /*#__PURE__*/React.createElement("div", {
-    key: i,
+  }, changelog.slice().sort((a, b) => {
+    const va = a.version.split('.').map(Number);
+    const vb = b.version.split('.').map(Number);
+    for (let i = 0; i < Math.max(va.length, vb.length); i++) {
+      const d = (vb[i] || 0) - (va[i] || 0);
+      if (d !== 0) return d;
+    }
+    return 0;
+  }).slice((verPage - 1) * VER_PER_PAGE, verPage * VER_PER_PAGE).map(entry => /*#__PURE__*/React.createElement("div", {
+    key: entry.version,
     className: "bg-slate-800/20 rounded-lg p-3 border border-slate-700/30"
   }, /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-2"
   }, /*#__PURE__*/React.createElement("span", {
-    className: "text-xs font-bold text-slate-300 mono"
-  }, "v", entry.version), i === 0 && /*#__PURE__*/React.createElement("span", {
+    className: "text-xs font-bold text-slate-300 mono cursor-pointer underline decoration-dotted underline-offset-2 hover:text-blue-400 transition-colors",
+    onClick: () => setVerDetail(entry)
+  }, "v", entry.version), entry.version === currentVer && /*#__PURE__*/React.createElement("span", {
     className: "text-[10px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded"
   }, "\u5F53\u524D")), /*#__PURE__*/React.createElement("div", {
     className: "text-[10px] text-slate-500 mt-0.5"
   }, entry.date), /*#__PURE__*/React.createElement("div", {
     className: "text-xs text-slate-400 mt-1 whitespace-pre-wrap"
-  }, entry.notes || entry.changelog || ''))))), /*#__PURE__*/React.createElement("div", {
+  }, entry.notes || entry.changelog || '')))), changelog.length > VER_PER_PAGE && /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-center gap-2 mt-3"
+  }, verPage > 1 && /*#__PURE__*/React.createElement("button", {
+    className: "text-xs text-slate-400 bg-slate-800/30 hover:bg-slate-700/40 px-2.5 py-1 rounded",
+    onClick: () => setVerPage(verPage - 1)
+  }, "\u4E0A\u4E00\u9875"), /*#__PURE__*/React.createElement("span", {
+    className: "text-xs text-slate-500"
+  }, verPage, " / ", Math.ceil(changelog.length / VER_PER_PAGE)), verPage * VER_PER_PAGE < changelog.length && /*#__PURE__*/React.createElement("button", {
+    className: "text-xs text-slate-400 bg-slate-800/30 hover:bg-slate-700/40 px-2.5 py-1 rounded",
+    onClick: () => setVerPage(verPage + 1)
+  }, "\u4E0B\u4E00\u9875")), verDetail && /*#__PURE__*/React.createElement("div", {
+    className: "fixed inset-0 z-50 flex items-center justify-center bg-black/50",
+    onClick: () => setVerDetail(null)
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "bg-slate-800 rounded-xl p-5 max-w-md w-full mx-4 border border-slate-600/50 shadow-2xl max-h-[80vh] overflow-y-auto",
+    onClick: e => e.stopPropagation()
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between mb-4"
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("span", {
+    className: "text-base font-bold text-white mono"
+  }, "v", verDetail.version), /*#__PURE__*/React.createElement("span", {
+    className: "text-xs text-slate-400 ml-2"
+  }, verDetail.date), verDetail.version === currentVer && /*#__PURE__*/React.createElement("span", {
+    className: "text-[10px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded ml-2"
+  }, "\u5F53\u524D")), /*#__PURE__*/React.createElement("button", {
+    className: "text-slate-400 hover:text-white text-lg leading-none transition-colors",
+    onClick: () => setVerDetail(null)
+  }, /*#__PURE__*/React.createElement("svg", {
+    className: "w-5 h-5",
+    fill: "none",
+    stroke: "currentColor",
+    viewBox: "0 0 24 24"
+  }, /*#__PURE__*/React.createElement("path", {
+    strokeLinecap: "round",
+    strokeLinejoin: "round",
+    strokeWidth: 2,
+    d: "M6 18L18 6M6 6l12 12"
+  })))), /*#__PURE__*/React.createElement("div", {
+    className: "text-xs text-slate-300 mb-4 bg-slate-700/30 rounded-lg p-3"
+  }, verDetail.notes || verDetail.changelog || ''), verDetail.detail && verDetail.detail.sections ? /*#__PURE__*/React.createElement("div", {
+    className: "space-y-3"
+  }, verDetail.detail.sections.map((sec, si) => /*#__PURE__*/React.createElement("div", {
+    key: si
+  }, /*#__PURE__*/React.createElement("div", {
+    className: sec.type === 'added' ? 'text-xs font-bold text-emerald-400 mb-1.5' : sec.type === 'changed' ? 'text-xs font-bold text-amber-400 mb-1.5' : sec.type === 'fixed' ? 'text-xs font-bold text-blue-400 mb-1.5' : sec.type === 'removed' ? 'text-xs font-bold text-red-400 mb-1.5' : 'text-xs font-bold text-slate-400 mb-1.5'
+  }, sec.type === 'added' ? '\ud83d\udfe2 新增' : sec.type === 'changed' ? '\ud83d\udfe1 优化' : sec.type === 'fixed' ? '\ud83d\udfe5 修复' : sec.type === 'removed' ? '\ud83d\udfe4 移除' : sec.type), /*#__PURE__*/React.createElement("ul", {
+    className: "space-y-1"
+  }, sec.items.map((item, ii) => /*#__PURE__*/React.createElement("li", {
+    key: ii,
+    className: "text-xs text-slate-400 pl-3 flex items-start gap-1.5"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-slate-400 mr-1.5"
+  }, ii + 1, "."), /*#__PURE__*/React.createElement("span", null, item))))))) : /*#__PURE__*/React.createElement("div", {
+    className: "text-xs text-slate-500 italic"
+  }, "\u6682\u65E0\u8BE6\u7EC6\u66F4\u65B0\u5185\u5BB9")))), /*#__PURE__*/React.createElement("div", {
     className: "bg-slate-800/20 rounded-xl p-3 border border-slate-700/30"
   }, /*#__PURE__*/React.createElement("div", {
     className: "text-[10px] text-slate-500 mb-1"

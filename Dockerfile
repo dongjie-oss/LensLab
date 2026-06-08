@@ -1,8 +1,10 @@
 # =============================================
-# 镜头演算室 · LensLab v1.0.0
+# 镜头演算室 · LensLab v1.0.1
 # 三阶段构建：Node 编译 → Python 依赖 → 精简运行时
 # 目标：从 2.4GB 压到 ~300-500MB
 # =============================================
+
+ARG BUILD_VERSION=1.0.1
 
 # ---- Stage 1: 前端编译 ----
 FROM node:20-alpine AS frontend-builder
@@ -17,21 +19,26 @@ RUN npm ci --omit=dev --ignore-scripts 2>/dev/null || npm install --omit=dev --i
 COPY frontend/ ./
 RUN node compile.js
 
-# ---- Stage 2: Python 依赖 ----
+# ---- Stage 2: Python 依赖（用虚拟环境减小镜像层）----
 FROM python:3.11-slim AS python-builder
 
 WORKDIR /app
 
 COPY backend/requirements.txt .
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+RUN python -m venv /install/venv && \
+    /install/venv/bin/pip install --no-cache-dir -r requirements.txt && \
+    find /install/venv/bin -maxdepth 1 -type f -name 'uvicorn*' -exec sh -c 'printf "#!/opt/venv/bin/python\n" | cat - "${1}" > "${1}.tmp" && mv "${1}.tmp" "${1}" && chmod +x "${1}"' _ {} \;
 
 # ---- Stage 3: 运行时（精简镜像）----
 FROM python:3.11-slim
 
+ARG BUILD_VERSION=1.0.1
+
 WORKDIR /app
 
-# 仅复制已安装的 Python 包
-COPY --from=python-builder /install /usr/local
+# 复制虚拟环境（比 /usr/local 方式更精简）
+COPY --from=python-builder /install/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
 # 复制后端代码
 COPY backend/ ./backend/
@@ -44,7 +51,7 @@ COPY --from=frontend-builder /app/frontend/assets ./frontend/assets
 RUN mkdir -p /app/data /app/data/uploads /app/data/results
 
 # 版本文件
-RUN echo '{"version":"1.0.0","build_time":"dev","git_sha":"dev"}' > /app/version.json
+RUN echo "{\"version\":\"${BUILD_VERSION}\",\"build_time\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"git_sha\":\"dev\"}" > /app/version.json
 
 # 入口脚本
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh

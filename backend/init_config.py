@@ -37,8 +37,8 @@ DEFAULT_CONFIG = {
     },
     "ai": {
         "api_key": "",
-        "base_url": "https://api.openai.com/v1",
-        "model": "gpt-4o-mini",
+        "base_url": "https://apihub.agnes-ai.com/v1",
+        "model": "agnes-2.0-flash",
         "enabled": False,
     },
     "ai_image": {

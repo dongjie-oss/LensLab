@@ -21,13 +21,20 @@ if (!document.getElementById('ai-gen-styles')) {
       from { opacity: 0; transform: scale(0.9); }
       to { opacity: 1; transform: scale(1); }
     }
-    . {
-      transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1), margin-right 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+    @keyframes fullScreenSlideIn {
+      0% { opacity: 0; transform: translateY(-30px) scale(0.95); }
+      100% { opacity: 1; transform: translateY(0) scale(1); }
     }
-    . {
-      transform: translateX(-80px);
-      margin-right: -80px;
+    @keyframes dropZoneHide {
+      0% { opacity: 1; transform: translateY(0) scale(1); height: auto; }
+      99% { opacity: 0; transform: translateY(10px) scale(0.98); height: 0; padding: 0; margin: 0; }
+      100% { opacity: 0; transform: translateY(10px) scale(0.98); height: 0; padding: 0; margin: 0; display: none; }
     }
+    @keyframes gridReveal {
+      0% { opacity: 0; transform: translateY(20px) scale(0.95); }
+      100% { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
   `;
   document.head.appendChild(style);
 }
@@ -128,17 +135,19 @@ function Histogram({ data }) {
 }
 
 // 区域模式选择器
-function ModeSelector({ modes, current, onChange }) {
+function ModeSelector({ modes, current, onChange, disabled }) {
   return (
     <div className="flex flex-wrap gap-2">
       {modes.map(m => (
         <button
           key={m.key}
-          onClick={() => onChange(current === m.key ? null : m.key)}
+          onClick={() => { if (!disabled) onChange(current === m.key ? null : m.key); }}
           className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-            current === m.key
-              ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40'
-              : 'bg-slate-800/50 text-slate-400 border border-slate-700/50 hover:border-slate-600'
+            disabled
+              ? 'bg-slate-800/30 text-slate-600 border border-slate-700/30 cursor-not-allowed'
+              : current === m.key
+                ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40'
+                : 'bg-slate-800/50 text-slate-400 border border-slate-700/50 hover:border-slate-600'
           }`}
         >
           {m.name}
@@ -214,9 +223,16 @@ function App() {
   const [imageDims, setImageDims] = useState({ w: 0, h: 0 });
   const fileInputRef = useRef(null);
   const folderInputRef = useRef(null);
+  const textInputRef = useRef(null);
+  const containerRef = useRef(null);
+  const [containerDims, setContainerDims] = useState({ w: 0, h: 0 });
   const [showAdmin, setShowAdmin] = useState(false);
   const toggleAdmin = () => setShowAdmin(v => !v);
   const imgRef = useRef(null);
+  const [aiEnabled, setAiEnabled] = useState(false);
+  const [aiImageEnabled, setAiImageEnabled] = useState(false);
+  const [aiSaved, setAiSaved] = useState(false);
+  const [aiImageSaved, setAiImageSaved] = useState(false);
   const [activeFileId, setActiveFileId] = useState(null);
   const [batchStatus, setBatchStatus] = useState({ inProgress: false, total: 0, processed: 0 });
   // AI 生图状态
@@ -229,17 +245,24 @@ function App() {
   const [genLoading, setGenLoading] = useState(false);
   const [genError, setGenError] = useState(null);
   const [genFileId, setGenFileId] = useState(null); // 正在生成的文件ID
-  const [showPromptPanel, setShowPromptPanel] = useState(false);
   const [promptTemplates, setPromptTemplates] = useState([]);
-  const [promptName, setPromptName] = useState('');
-  const [promptContent, setPromptContent] = useState('');
-  const [promptEditId, setPromptEditId] = useState(null);
-  const [promptType, setPromptType] = useState('prompt'); // 'prompt' or 'style'
   const [customPrompts, setCustomPrompts] = useState([]); // [{name, content, order}]
   const [selectedPromptNames, setSelectedPromptNames] = useState([]);
   const [showAiGenPanel, setShowAiGenPanel] = useState(false);
   const [selectedStyleName, setSelectedStyleName] = useState(null); // 全局风格（单选，可反选）
   const [similarImages, setSimilarImages] = useState(false);
+  const [customPromptEnabled, setCustomPromptEnabled] = useState(false);
+  const [customPromptText, setCustomPromptText] = useState('');
+  // 文字生图
+  const [textPrompt, setTextPrompt] = useState('');
+  const [textGenLoading, setTextGenLoading] = useState(false);
+  const [textGenImages, setTextGenImages] = useState([]);
+  const [textGenProgress, setTextGenProgress] = useState(0);
+  const [isTextGenMode, setIsTextGenMode] = useState(true);
+  const [textGenError, setTextGenError] = useState(null);
+  const [textGenTotal, setTextGenTotal] = useState(9);
+  const [textGenTaskId, setTextGenTaskId] = useState('');
+
   const genTimerRef = useRef(null);
   const aiAdviceRef = useRef(null);
   const [multiSelect, setMultiSelect] = useState(false);
@@ -254,19 +277,15 @@ function App() {
     } catch (e) { /* ignore */ }
   };
 
-  const savePrompt = async () => {
-    if (!promptName.trim() || !promptContent.trim()) return;
+  const savePrompt = async (name, content, type, editId) => {
+    if (!name.trim() || !content.trim()) return;
     const fd = new FormData();
-    fd.append('id', promptEditId || '');
-    fd.append('name', promptName.trim());
-    fd.append('content', promptContent.trim());
-    fd.append('type', promptType);
+    fd.append('id', editId || '');
+    fd.append('name', name.trim());
+    fd.append('content', content.trim());
+    fd.append('type', type);
     await fetch(`${API_BASE}/api/prompts`, { method: 'POST', body: fd });
     await loadPrompts();
-    setPromptName('');
-    setPromptContent('');
-    setPromptEditId(null);
-    setPromptType('prompt');
   };
 
   const deletePrompt = async (id) => {
@@ -278,7 +297,21 @@ function App() {
   useEffect(() => {
     fetch(`${API_BASE}/api/grid-modes`).then(r => r.json()).then(d => setModes(d.modes));
     fetch(`${API_BASE}/api/history`).then(r => r.json()).then(d => setHistory(d.items));
+    fetch(`${API_BASE}/api/settings/ai`).then(r => r.json()).then(d => {
+      setAiEnabled(d.enabled); setAiImageEnabled(d.image_enabled);
+      setAiSaved(d.has_saved); setAiImageSaved(d.image_has_saved);
+    }).catch(() => {});
     loadPrompts();
+  }, []);
+
+  // 组件卸载时清除轮询定时器
+  useEffect(() => {
+    return () => {
+      if (genTimerRef.current) {
+        clearInterval(genTimerRef.current);
+        genTimerRef.current = null;
+      }
+    };
   }, []);
 
   // 模式切换时自动重新分析（历史文件中）
@@ -307,6 +340,7 @@ function App() {
 
   // 批量处理文件
   const handleFiles = async (fileList) => {
+    setIsTextGenMode(false);
     if (genFileId) { alert('AI 生成中，请等待完成或取消后再上传'); return; }
     if (!fileList || fileList.length === 0) return;
     const files = Array.from(fileList).filter(f => {
@@ -387,21 +421,141 @@ function App() {
     setLoading(false);
   };
 
+  // 文字生图
+  const handleTextGenerate = async () => {
+    if (!textPrompt.trim()) return;
+    setTextGenLoading(true);
+    setTextGenError(null);
+    setTextGenImages([]);
+    setTextGenProgress(0);
+    setTextGenTotal(9);
+    try {
+      const fd = new FormData();
+      fd.append('text', textPrompt.trim());
+      fd.append('similar', String(true));
+      fd.append('num_images', '9');
+      if (selectedStyleName) {
+        const tpl = promptTemplates.find(t => t.name === selectedStyleName);
+        if (tpl) {
+          fd.append('global_style', JSON.stringify({ name: tpl.name, content: tpl.content }));
+        }
+      }
+      if (customPrompts.length > 0) {
+        fd.append('custom_prompts_json', JSON.stringify(customPrompts.map(p => ({ name: p.name, content: p.content }))));
+      }
+      const res = await fetch(`${API_BASE}/api/generate/text-image`, { method: 'POST', body: fd });
+      const data = await res.json();
+      if (data.ok && data.task_id) {
+        setTextGenTaskId(data.task_id);
+        pollTextGeneration(data.task_id);
+      } else {
+        setTextGenError(data.error || '启动失败');
+        setTextGenLoading(false);
+      }
+    } catch (err) {
+      setTextGenError('网络错误');
+      setTextGenLoading(false);
+    }
+  };
+
+  // 轮询文字生图任务
+  const pollTextGeneration = (taskId) => {
+    const poll = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/generate/task/${taskId}`);
+        const data = await res.json();
+        if (!data.ok || !data.task) {
+          setTextGenError('任务不存在');
+          setTextGenLoading(false);
+          return;
+        }
+        const t = data.task;
+        setTextGenImages(t.images || []);
+        setTextGenProgress(t.progress || 0);
+        setTextGenTotal(t.total || 9);
+        if (t.status === 'done') {
+          clearInterval(genTimerRef.current);
+          setTextGenLoading(false);
+        } else if (t.status === 'failed' || t.status === 'cancelled') {
+          clearInterval(genTimerRef.current);
+          setTextGenLoading(false);
+          setTextGenError(t.error || '生成取消');
+        } else {
+          // 轮询中
+        }
+      } catch {
+        clearInterval(genTimerRef.current);
+        setTextGenLoading(false);
+        setTextGenError('轮询失败');
+      }
+    };
+    if (genTimerRef.current) clearInterval(genTimerRef.current);
+    genTimerRef.current = setInterval(poll, 2000);
+    poll();
+  };
+
+  // 停止文字生图
+  const handleCancelTextGen = async () => {
+    if (!textGenTaskId) return;
+    try {
+      const fd = new FormData();
+      fd.append('task_id', textGenTaskId);
+      await fetch(`${API_BASE}/api/generate/cancel`, { method: 'POST', body: fd });
+    } catch {}
+    clearInterval(genTimerRef.current);
+    setTextGenLoading(false);
+    setTextGenError('已手动停止');
+  };
+
   // AI 生图
   const startGeneration = async (fileId, options = {}) => {
-    const { similar = false, selectedStyleName = null } = options;
+    const { similarImages = false, selectedStyleName = null } = options;
+    const similar = similarImages;
+
+    // === 自定义提示词模式 ===
+    if (customPromptEnabled && customPromptText.trim()) {
+      if (genTimerRef.current) clearInterval(genTimerRef.current);
+      setGenLoading(true);
+      setGenError(null);
+      setGenImages([]);
+      setGenProgress(0);
+      setGenTotal(1);
+      setAiGenActive(true);
+      setGenFileId(fileId);
+      try {
+        const fd = new FormData();
+        fd.append('file_id', fileId);
+        fd.append('custom_prompt', customPromptText.trim());
+        const res = await fetch(`${API_BASE}/api/generate/custom-prompt`, { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.ok && data.task_id) {
+          setGenTaskId(data.task_id);
+          pollGeneration(data.task_id, fileId);
+        } else {
+          setGenError(data.error || '启动失败');
+          setGenLoading(false);
+          setGenFileId(null);
+        }
+      } catch (err) {
+        setGenError('网络错误');
+        setGenLoading(false);
+        setGenFileId(null);
+      }
+      return;
+    }
+
     // 🔴 先计算 numImages，再 set state
     const promptCount = customPrompts.length;
     const hasGlobal = !!selectedStyleName;
-    let numImages = 9;
-    if (hasGlobal && promptCount === 0 && !similar) {
+    let numImages;
+    if (similar) {
+      numImages = 9; // 无限想象 → 始终9张
+    } else if (hasGlobal && promptCount === 0) {
       numImages = 1; // 只选全局风格 → 1张占满9格
-    } else if (!hasGlobal && promptCount === 1 && similar) {
-      numImages = 9; // 1个提示词+类似图片 → 9张(1号提示词+2-9类似)
-    } else if (!hasGlobal && promptCount > 1) {
-      numImages = promptCount; // 多个提示词无全局 → N张
-    } else if (hasGlobal && promptCount > 0) {
-      numImages = promptCount; // 全局+提示词 → N张
+    } else if (promptCount > 0) {
+      numImages = promptCount; // 有提示词 → N张
+    } else {
+      numImages = 9; // 什么都不选 → 9张不同默认风格
     }
     // 清除旧轮询
     if (genTimerRef.current) clearInterval(genTimerRef.current);
@@ -422,7 +576,10 @@ function App() {
           fd.append('global_style', JSON.stringify({ name: tpl.name, content: tpl.content }));
         }
       }
-      if (customPrompts.length > 0) {
+      // 无限想象模式：始终传递 custom_prompts_json（即使空数组），后端优先用提示词
+      if (similar) {
+        fd.append('custom_prompts_json', JSON.stringify(customPrompts.map(p => ({name: p.name, content: p.content}))));
+      } else if (customPrompts.length > 0) {
         fd.append('custom_prompts_json', JSON.stringify(customPrompts.map(p => ({name: p.name, content: p.content}))));
       }
       fd.append('similar', String(similar));
@@ -454,6 +611,8 @@ function App() {
     setGenFileId(null);
     setGenTotal(9);
     setGenError('已取消');
+    setCustomPromptEnabled(false);
+    setCustomPromptText('');
     setCustomPrompts([]);
     setSelectedPromptNames([]);
     if (genFileId) {
@@ -478,6 +637,8 @@ function App() {
             genTimerRef.current = null;
             setGenLoading(false);
             setGenFileId(null);
+            setCustomPromptEnabled(false);
+            setCustomPromptText('');
             setCustomPrompts([]);
             setSelectedPromptNames([]);
             if (data.task.status === 'failed') {
@@ -503,6 +664,28 @@ function App() {
   };
 
   // 选择历史（单击）
+  // 将 AI 生成的图片添加到历史记录
+  const handleAddToHistory = async (imageUrl) => {
+    try {
+      const fd = new FormData();
+      fd.append('image_url', imageUrl);
+      const res = await fetch(`${API_BASE}/api/history/from-generated`, { method: 'POST', body: fd });
+      const data = await res.json();
+      if (data.ok) {
+        // 刷新历史列表
+        const h = await fetch(`${API_BASE}/api/history`).then(r => r.json());
+        setHistory(h.items);
+        return data.file_id;
+      } else {
+        console.error('添加到历史失败:', data.error);
+        return null;
+      }
+    } catch (e) {
+      console.error('添加到历史失败:', e);
+      return null;
+    }
+  };
+
   const selectHistory = async (item) => {
     // 多选模式下：切换选中状态，不预览
     if (multiSelect) {
@@ -524,6 +707,7 @@ function App() {
       setMode(null);
       setGenImages([]);
       setShowOverlay(true);
+      setIsTextGenMode(false);
     } catch (err) {
       alert('加载失败');
     }
@@ -538,6 +722,7 @@ function App() {
       setActiveFileId(null);
       setResult(null);
       setPreview(null);
+      setIsTextGenMode(false);
       setFile(null);
       setGenImages([]);
     }
@@ -579,6 +764,7 @@ function App() {
       setActiveFileId(null);
       setResult(null);
       setPreview(null);
+      setIsTextGenMode(false);
       setFile(null);
     }
   };
@@ -720,7 +906,7 @@ function App() {
         <div className="h-14 bg-[#0d1117] border-b border-slate-800 flex items-center justify-between px-6">
           <div className="flex items-center gap-4">
             <span className="text-xs text-slate-500">区域模式</span>
-            <ModeSelector modes={modes} current={mode} onChange={setMode} />
+            <ModeSelector modes={modes} current={mode} onChange={setMode} disabled={isTextGenMode} />
           </div>
           <div className="flex items-center gap-3">
             <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer">
@@ -733,20 +919,54 @@ function App() {
               显示测光点
             </label>
             {/* AI 操作按钮 */}
-            {result && result.ai_enabled && (
+            {aiEnabled && (
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => aiAdviceRef.current?.()}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium
-                    bg-gradient-to-br from-slate-700/60 to-slate-800/80 hover:from-blue-500/25 hover:to-blue-600/20
-                    border border-slate-600/50 hover:border-blue-500/40
-                    text-slate-200 hover:text-blue-300 transition-all duration-200"
+                  onClick={() => { if (!isTextGenMode) aiAdviceRef.current?.(); }}
+                  disabled={isTextGenMode}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all duration-200 ${
+                    isTextGenMode
+                      ? 'bg-slate-800/30 border-slate-700/30 text-slate-600 cursor-not-allowed'
+                      : 'bg-gradient-to-br from-slate-700/60 to-slate-800/80 hover:from-blue-500/25 hover:to-blue-600/20 border border-slate-600/50 hover:border-blue-500/40 text-slate-200 hover:text-blue-300'
+                  }`}
                 >
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
                   </svg>
                   AI 分析
                 </button>
+                {aiImageEnabled && (
+                <button
+                  onClick={() => {
+                    setIsTextGenMode(true);
+                    // 退出预览模式（如果正在查看历史图片）
+                    setPreview(null);
+                    // 等待 DOM 更新后滚动
+                    setTimeout(() => {
+                      if (textGenImages.length > 0) {
+                        // 生成过：滚动到九宫格区域
+                        const gridEl = document.querySelector('[data-ai-gen-grid]');
+                        if (gridEl) gridEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      } else {
+                        // 没生成过：聚焦文字输入框
+                        if (textInputRef && textInputRef.current) {
+                          textInputRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                          setTimeout(() => textInputRef.current.focus(), 500);
+                        }
+                      }
+                    }, 100);
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium
+                    bg-gradient-to-br from-slate-700/60 to-slate-800/80 hover:from-blue-500/25 hover:to-blue-600/20
+                    border border-slate-600/50 hover:border-blue-500/40
+                    text-slate-200 hover:text-blue-300 transition-all duration-200"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  AI 文生图
+                </button>
+                )}
                 {genLoading && (
                   <button onClick={cancelGeneration}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-gradient-to-br from-red-500/20 to-red-600/30 border border-red-500/40 text-red-300 hover:from-red-500/30 hover:to-red-600/40 transition-all">
@@ -754,19 +974,7 @@ function App() {
                     取消
                   </button>
                 )}
-                <button
-                  onClick={() => { setShowPromptPanel(true); loadPrompts(); }}
-                  className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-[11px] font-medium transition-all duration-200
-                    bg-gradient-to-br from-slate-700/60 to-slate-800/80 hover:from-purple-500/25 hover:to-purple-600/20
-                    border border-slate-600/50 hover:border-purple-500/40
-                    text-slate-200 hover:text-purple-300"
-                  title="自定义提示词"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-                  </svg>
-                </button>
+
                 {selectedPromptNames.length > 0 && (
                   <div className="hidden sm:flex items-center gap-1 flex-wrap">
                     {selectedPromptNames.map((name, i) => (
@@ -789,8 +997,8 @@ function App() {
                   </div>
                 )}
                 <button
-                  onClick={() => { loadPrompts(); setShowAiGenPanel(true); }}
-                  disabled={genLoading || showAiGenPanel}
+                  onClick={() => { if (!isTextGenMode) { loadPrompts(); setShowAiGenPanel(true); } }}
+                  disabled={genLoading || showAiGenPanel || isTextGenMode}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all duration-200
                     disabled:opacity-50 disabled:cursor-not-allowed
                     bg-gradient-to-br from-slate-700/60 to-slate-800/80 hover:from-blue-500/25 hover:to-blue-600/20
@@ -800,7 +1008,7 @@ function App() {
                   {genLoading ? (
                     <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-gradient-to-br from-red-500/20 to-red-600/30 border border-red-500/40 text-red-300">
                       <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-                      生成中 {genProgress > 0 ? `${genProgress}/9` : ''}
+                      生成中 {genProgress > 0 ? `${genProgress}/${genTotal}` : ''}
                     </div>
                   ) : (
                     <><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>AI 生图</>
@@ -812,34 +1020,108 @@ function App() {
         </div>
 
         {/* 图片预览区 */}
-        <div className="flex-1 overflow-auto flex items-center justify-center p-8 bg-[#080b12]">
+        <div className={`${preview ? 'flex-1 overflow-auto flex items-center justify-center p-8' : 'flex-1 flex flex-col px-8 pt-8 pb-0 min-h-0 overflow-hidden'} bg-[#080b12]`}>
           {!preview ? (
-            <div
-              className={`drop-zone w-full max-w-lg aspect-video rounded-2xl flex flex-col items-center justify-center cursor-pointer ${
-                dragOver ? 'drag-over' : ''
-              }`}
-              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={onDrop}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <svg className="w-12 h-12 text-slate-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-              <p className="text-slate-400 text-sm">拖拽图片到此处，或点击选择</p>
-              <p className="text-slate-600 text-xs mt-2">支持 JPG / PNG</p>
-            </div>
+            <>
+              {/* 主区域：有结果显示九宫格，无结果显示上传区 */}
+              <div className="flex-1 flex flex-col  min-h-0 w-full">
+                {(textGenLoading || textGenImages.length > 0) ? (
+                  <div data-ai-gen-grid className="w-full flex-1 min-h-0">
+                    <AiGenGrid
+                      images={textGenImages}
+                      progress={textGenProgress}
+                      loading={textGenLoading}
+                      error={textGenError}
+                      total={textGenTotal}
+                      progressPct={textGenTotal > 0 ? Math.round((textGenProgress / textGenTotal) * 100) : 0}
+                      onAddToHistory={handleAddToHistory}
+                    />
+                  </div>
+                ) : (
+                  <div className="w-full max-w-4xl flex-1 flex items-center justify-center">
+                    <div
+                      className={`drop-zone w-full h-full rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all duration-300 ease-out ${
+                        dragOver ? 'drag-over' : ''
+                      }`}
+                      style={{ minHeight: '200px' }}
+                      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                      onDragLeave={() => setDragOver(false)}
+                      onDrop={onDrop}
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <svg className="w-12 h-12 text-slate-600 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      <p className="text-slate-400 text-sm">拖拽图片到此处，或点击选择</p>
+                      <p className="text-slate-600 text-xs mt-2">JPG / PNG</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 文字输入框 - 始终在下方 */}
+              <div className="flex-shrink-0 w-full flex items-center justify-center" style={{ paddingBottom: 'env(safe-area-inset-bottom)', background: '#080b12' }}>
+                <div className="w-full max-w-4xl">
+                  <div className="flex items-center gap-2 bg-[#0d1117] border border-slate-700/60 rounded-xl px-3 py-2.5 focus-within:border-blue-500/50 transition-colors">
+                    <svg className="w-4 h-4 text-slate-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                    </svg>
+                    <input
+                      ref={textInputRef}
+                      type="text"
+                      value={textPrompt}
+                      onChange={(e) => setTextPrompt(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' && textPrompt.trim()) handleTextGenerate(); }}
+                      placeholder="输入文字描述，直接生成九宫格..."
+                      className="flex-1 bg-transparent text-slate-200 text-sm placeholder-slate-600 outline-none"
+                    />
+                    <button
+                      onClick={handleTextGenerate}
+                      disabled={!textPrompt.trim() || textGenLoading}
+                      className="px-4 py-1.5 rounded-lg text-xs font-medium transition-all duration-200
+                        disabled:opacity-40 disabled:cursor-not-allowed
+                        bg-gradient-to-br from-blue-500/20 to-purple-500/20
+                        hover:from-blue-500/30 hover:to-purple-500/30
+                        border border-blue-500/30 hover:border-blue-400/50
+                        text-blue-300 hover:text-blue-200"
+                    >
+                      {textGenLoading ? (
+                        <span className="flex items-center gap-1">
+                          <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                          生成中
+                        </span>
+                      ) : `生成${genTotal || 9}张`}
+                    </button>
+                    {textGenLoading && (
+                      <button
+                        onClick={handleCancelTextGen}
+                        className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200
+                          bg-red-500/15 hover:bg-red-500/25
+                          border border-red-500/30 hover:border-red-400/50
+                          text-red-400 hover:text-red-300"
+                      >
+                        <span className="flex items-center gap-1">
+                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                          停止
+                        </span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </>
+
           ) : (
-            <div className="flex items-center gap-6 transition-all duration-500 ease-out">
-              {/* 原始图片 */}
-              <div className="flex-shrink-0">
-                <div className="image-container">
+            <div className="flex items-center gap-6 transition-all duration-500 ease-out min-w-0" style={{ height: '100%' }}>
+              {/* 原始图片 — 左侧 */}
+              <div className="min-w-0 flex-1 overflow-hidden flex items-center justify-center" style={{ minHeight: 0 }}>
+                <div className="image-container relative">
                   <img
                     ref={imgRef}
                     src={preview}
                     alt="preview"
                     onLoad={onImageLoad}
-                    className="rounded-lg shadow-2xl max-h-[75vh]"
+                    className="rounded-lg shadow-2xl max-h-[70vh] max-w-full object-contain"
                   />
                   <MeteringOverlay
                     points={result?.metering_points}
@@ -852,17 +1134,19 @@ function App() {
                 </div>
               </div>
 
-              {/* AI 生成结果网格 */}
+              {/* AI 生成结果网格 — 右侧 */}
               {(genLoading || genImages.length > 0) && (
-                <AiGenGrid
-                  images={genImages}
-                  progress={genProgress}
-                  loading={genLoading}
-                  error={genError}
-                  imageHeight={imageDims.h}
-                  total={genTotal}
-                  progressPct={genProgress > 0 ? Math.round((genProgress / genTotal) * 100) : 0}
-                />
+                <div className="flex-1 min-h-0 flex items-center justify-center">
+                  <AiGenGrid
+                    images={genImages}
+                    progress={genProgress}
+                    loading={genLoading}
+                    error={genError}
+                    total={genTotal}
+                    progressPct={genProgress > 0 ? Math.round((genProgress / genTotal) * 100) : 0}
+                    onAddToHistory={handleAddToHistory}
+                  />
+                </div>
               )}
             </div>
           )}
@@ -870,7 +1154,7 @@ function App() {
       </div>
 
       {/* 右侧栏 - 分析结果 */}
-      <div className="w-72 bg-[#0d1117] border-l border-slate-800 flex flex-col overflow-hidden">
+      <div style={{ display: isTextGenMode ? "none" : "flex" }} className="w-72 bg-[#0d1117] border-l border-slate-800 flex flex-col overflow-hidden">
         <div className="p-4 border-b border-slate-800">
           <h2 className="text-sm font-semibold text-slate-300">分析结果</h2>
         </div>
@@ -936,7 +1220,7 @@ function App() {
             </div>
 
             {/* AI 智能建议（手动触发） */}
-            {result.ai_enabled && (
+            {aiEnabled && (
               <AiAdvice fileId={result.file_id} onRequest={aiAdviceRef} />
             )}
 
@@ -946,25 +1230,34 @@ function App() {
       </div>
 
       {showAdmin && ReactDOM.createPortal(<AdminPanel onClose={() => setShowAdmin(false)} />, document.getElementById('admin-root'))}
-      {showPromptPanel && ReactDOM.createPortal(<PromptPanel
-        prompts={promptTemplates}
-        promptName={promptName} setPromptName={setPromptName}
-        promptContent={promptContent} setPromptContent={setPromptContent}
-        promptEditId={promptEditId} setPromptEditId={setPromptEditId}
-        promptType={promptType} setPromptType={setPromptType}
-        onSave={savePrompt}
-        onDelete={deletePrompt}
-        onClose={() => setShowPromptPanel(false)}
-      />, document.getElementById('admin-root'))}
       {showAiGenPanel && ReactDOM.createPortal(<AiGenPanel
         prompts={promptTemplates}
         customPrompts={customPrompts} setCustomPrompts={setCustomPrompts}
         selectedPromptNames={selectedPromptNames} setSelectedPromptNames={setSelectedPromptNames}
         selectedStyleName={selectedStyleName} setSelectedStyleName={setSelectedStyleName}
         similarImages={similarImages} setSimilarImages={setSimilarImages}
+        customPromptEnabled={customPromptEnabled} setCustomPromptEnabled={setCustomPromptEnabled}
+        customPromptText={customPromptText} setCustomPromptText={setCustomPromptText}
         genLoading={genLoading}
-        onGenerate={() => startGeneration(result.file_id, { similarImages, selectedStyleName })}
-        onClose={() => setShowAiGenPanel(false)}
+        result={result}
+        onGenerate={() => {
+          if (!result) { alert("请先导入并分析图片"); return; }
+          const fid = result.file_id;
+          if (customPromptEnabled && !customPromptText.trim()) { alert("请输入自定义提示词"); return; }
+          setShowAiGenPanel(false);
+          setTimeout(() => {
+            if (customPromptEnabled) {
+              startGeneration(fid, { customPrompt: true });
+            } else {
+              startGeneration(fid, { similarImages, selectedStyleName });
+            }
+          }, 100);
+        }}
+        onRefreshPrompts={loadPrompts}
+        onDeletePrompt={deletePrompt}
+        onSavePrompt={savePrompt}
+        onClose={() => { setShowAiGenPanel(false); setCustomPromptEnabled(false); setCustomPromptText(''); }}
+        textModelEnabled={aiEnabled}
       />, document.getElementById('admin-root'))}
     </div>
   );
@@ -998,25 +1291,173 @@ function ExposureAdvice({ result }) {
 }
 
 // AI 生图设置面板
-function AiGenPanel({ prompts, customPrompts, setCustomPrompts, selectedPromptNames, setSelectedPromptNames, selectedStyleName, setSelectedStyleName, similarImages, setSimilarImages, genLoading, onGenerate, onClose }) {
+// AI 生图设置面板（内嵌模板管理）
+function AiGenPanel({ prompts, customPrompts, setCustomPrompts, selectedPromptNames, setSelectedPromptNames, selectedStyleName, setSelectedStyleName, similarImages, setSimilarImages, customPromptEnabled, setCustomPromptEnabled, customPromptText, setCustomPromptText, genLoading, onGenerate, result, onRefreshPrompts, onSavePrompt, onDeletePrompt, onClose, textModelEnabled }) {
   const promptList = (prompts || []).filter(p => (p.type || 'prompt') === 'prompt');
   const styleList = (prompts || []).filter(p => (p.type || 'prompt') === 'style');
 
+  // 模板管理状态：null = 选择模式，'prompt' | 'style' = 管理模式
+  const [manageTab, setManageTab] = React.useState(null);
+  const [editName, setEditName] = React.useState('');
+  const [editContent, setEditContent] = React.useState('');
+  const [editId, setEditId] = React.useState(null);
+  const [isCreating, setIsCreating] = React.useState(false);
+
   const togglePrompt = (p) => {
     if (selectedPromptNames.includes(p.name)) {
-      // 取消选中
       setSelectedPromptNames(selectedPromptNames.filter(n => n !== p.name));
       setCustomPrompts(customPrompts.filter(cp => cp.name !== p.name));
     } else if (customPrompts.length < 9) {
-      // 选中（追加到末尾，按点击顺序）
       setSelectedPromptNames([...selectedPromptNames, p.name]);
       setCustomPrompts([...customPrompts, { name: p.name, content: p.content, order: customPrompts.length }]);
     }
   };
+
+  // 阻止左滑返回
+  React.useEffect(() => {
+    const onPop = () => { window.history.pushState(null, '', window.location.href); };
+    window.history.pushState(null, '', window.location.href);
+    window.addEventListener('popstate', onPop);
+    return () => { window.removeEventListener('popstate', onPop); };
+  }, []);
+
+  const preventClose = (e) => { e.preventDefault(); e.stopPropagation(); };
+
+  // --- 管理模式：CRUD 处理器 ---
+  const startEdit = (item) => {
+    setEditName(item.name);
+    setEditContent(item.content);
+    setEditId(item.id);
+    setIsCreating(true);
+  };
+  const startNew = () => {
+    setEditName('');
+    setEditContent('');
+    setEditId(null);
+    setIsCreating(true);
+  };
+  const handleSave = () => {
+    if (!editName.trim() || !editContent.trim()) return;
+    onSavePrompt(editName, editContent, manageTab, editId || '');
+    setEditName('');
+    setEditContent('');
+    setEditId(null);
+    setIsCreating(false);
+    onRefreshPrompts();
+  };
+  const handleDelete = (id) => {
+    if (!confirm('确定删除此模板？解除锁定需要重新打开设置面板')) return;
+    onDeletePrompt(id);
+    onRefreshPrompts();
+  };
+
+  const currentItems = manageTab === 'prompt' ? promptList : styleList;
+
+  // ==================== 管理视图 ====================
+  if (manageTab) {
+    return ReactDOM.createPortal(
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" tabIndex={-1} onClick={preventClose}>
+        <div className="w-[520px] min-w-[360px] max-w-[95vw] max-h-[85vh] rounded-2xl overflow-hidden bg-slate-900 border border-slate-700/50 shadow-2xl shadow-black/50 flex flex-col" onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
+          {/* 标题栏 */}
+          <div className="flex items-center justify-between px-5 py-3 border-b border-slate-800/60">
+            <div className="flex items-center gap-3">
+              <button onClick={() => { setManageTab(null); startNew(); }}
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800/80 transition-all">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7"/></svg>
+              </button>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-white">{manageTab === 'prompt' ? '🎯 提示词管理' : '🎨 全局风格管理'}</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-800 text-slate-500">{currentItems.length}</span>
+              </div>
+            </div>
+            <button onClick={() => { setManageTab(null); setIsCreating(false); setEditName(''); setEditContent(''); setEditId(null); }} className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-500 hover:text-white hover:bg-slate-800/80 transition-all">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            {/* 列表 */}
+            {currentItems.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-10 text-slate-500">
+                <div className="text-2xl mb-2">📭</div>
+                <div className="text-[11px]">暂无{manageTab === 'prompt' ? '提示词' : '全局风格'}模板</div>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {currentItems.map(item => (
+                  <div key={item.id}
+                    className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border transition-all group ${
+                      editId === item.id
+                        ? 'bg-blue-500/10 border-blue-500/30'
+                        : 'bg-slate-800/40 border-slate-700/30 hover:border-slate-600/50'
+                    }`}>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-medium text-white truncate">{item.name}</div>
+                      <div className="text-[10px] text-slate-500 truncate mt-0.5">{item.content.slice(0, 50)}{item.content.length > 50 ? '…' : ''}</div>
+                    </div>
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => startEdit(item)}
+                        className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-500 hover:text-blue-300 hover:bg-blue-500/10 transition-all" title="编辑">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                      </button>
+                      <button onClick={() => handleDelete(item.id)}
+                        className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-500 hover:text-red-300 hover:bg-red-500/10 transition-all" title="删除">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* 编辑/新建表单 — 有内容时显示 */}
+            {editName !== '' || editContent !== '' || editId !== null || isCreating ? (
+              <div className="p-3.5 rounded-xl bg-slate-800/50 border border-slate-700/40 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-medium text-slate-300">{editId ? '编辑模板' : '新建模板'}</span>
+                  {editId && (
+                    <button onClick={() => { setEditId(null); setEditName(''); setEditContent(''); setIsCreating(false); }}
+                      className="text-[10px] text-slate-500 hover:text-slate-300 transition-colors">取消编辑</button>
+                  )}
+                </div>
+                <input value={editName} onChange={e => setEditName(e.target.value)}
+                  placeholder="模板名称"
+                  className="w-full px-3 py-2 rounded-lg bg-slate-900/60 border border-slate-700/40 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500/40" />
+                <textarea value={editContent} onChange={e => setEditContent(e.target.value)}
+                  placeholder={manageTab === 'prompt' ? '输入提示词内容…' : '输入全局风格描述…'}
+                  rows={3}
+                  className="w-full px-3 py-2 rounded-lg bg-slate-900/60 border border-slate-700/40 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500/40 resize-none" />
+                <div className="flex justify-end gap-2">
+                  <button onClick={() => { setEditId(null); setEditName(''); setEditContent(''); setIsCreating(false); }}
+                    className="px-3 py-1.5 rounded-lg text-[10px] bg-slate-700/40 hover:bg-slate-700/60 text-slate-400 transition-all">取消</button>
+                  <button onClick={handleSave}
+                    disabled={!editName.trim() || !editContent.trim()}
+                    className="px-3 py-1.5 rounded-lg text-[10px] font-medium bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 border border-blue-500/30 disabled:opacity-30 disabled:cursor-not-allowed">
+                    {editId ? '保存修改' : '创建'}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          {/* 底部新建按钮 */}
+          <div className="px-4 py-3 border-t border-slate-800/60">
+            <button onClick={startNew}
+              className="w-full py-2.5 rounded-xl text-xs font-medium bg-slate-800/70 hover:bg-slate-700/80 border border-slate-700/50 hover:border-slate-600 text-slate-300 hover:text-white transition-all flex items-center justify-center gap-2">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"/></svg>
+              新建{manageTab === 'prompt' ? '提示词' : '全局风格'}
+            </button>
+          </div>
+        </div>
+      </div>,
+      document.getElementById('admin-root')
+    );
+  }
+
+  // ==================== 选择视图 ====================
   return ReactDOM.createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={onClose}>
-      <div className="relative w-[520px] max-w-[95vw] rounded-2xl overflow-hidden bg-slate-900 border border-slate-700/50 shadow-2xl shadow-black/50" onClick={e => e.stopPropagation()}>
-        {/* 装饰背景光晕 */}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" tabIndex={-1} onClick={preventClose}>
+      <div className="relative w-[520px] max-w-[95vw] rounded-2xl overflow-hidden bg-slate-900 border border-slate-700/50 shadow-2xl shadow-black/50" onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
         <div className="absolute -top-24 -right-24 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-24 -left-24 w-40 h-40 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="relative z-10">
@@ -1036,10 +1477,18 @@ function AiGenPanel({ prompts, customPrompts, setCustomPrompts, selectedPromptNa
             </button>
           </div>
           <div className="h-px bg-gradient-to-r from-transparent via-slate-700/60 to-transparent mx-6" />
-          {/* 模板选择区 */}
-          <div className="px-6 pt-4 pb-3">
+
+          {/* 提示词选择区 */}
+          <div className={`px-6 pt-4 pb-3 transition-all duration-300 ${customPromptEnabled ? 'opacity-30 pointer-events-none' : ''}`}>
             <div className="flex items-center justify-between mb-3">
-              <span className="text-[11px] font-medium text-slate-400">提示词</span>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-medium text-slate-400">提示词</span>
+                <button onClick={() => setManageTab('prompt')}
+                  className="w-5 h-5 rounded-md flex items-center justify-center text-slate-600 hover:text-slate-300 hover:bg-slate-800/80 transition-all"
+                  title="管理提示词模板">
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                </button>
+              </div>
               <span className="text-[10px] text-slate-600 font-mono">
                 {selectedPromptNames.length > 0 ? (
                   <span className="text-emerald-400">已选 {selectedPromptNames.length}/9</span>
@@ -1048,27 +1497,22 @@ function AiGenPanel({ prompts, customPrompts, setCustomPrompts, selectedPromptNa
                 )}
               </span>
             </div>
-            <p className="text-[10px] text-slate-600 mb-3 leading-relaxed">动作、表情、神态、天气等，与全局风格内容冲突时以全局内容为主</p>
+            <p className="text-[10px] text-slate-600 mb-3 leading-relaxed">动作、表情、神态、天气等，与全局风格内容冲突时以全局为主</p>
             {promptList.length > 0 ? (
               <div className="flex flex-wrap gap-2">
                 {promptList.map(p => {
                   const idx = selectedPromptNames.indexOf(p.name);
                   const isSelected = idx !== -1;
                   return (
-                    <button
-                      key={p.id}
-                      onClick={() => togglePrompt(p)}
-                      disabled={!isSelected && customPrompts.length >= 9}
+                    <button key={p.id} onClick={() => togglePrompt(p)}
+                      disabled={customPromptEnabled || (!isSelected && customPrompts.length >= 9)}
                       className={`relative flex items-center gap-1.5 px-3 py-2 rounded-xl text-[11px] font-medium transition-all duration-200 border active:scale-95 ${
                         isSelected
                           ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-lg shadow-emerald-500/10'
                           : 'bg-slate-800/60 text-slate-400 border-slate-700/50 hover:border-slate-600 hover:text-slate-300 hover:bg-slate-800/80'
-                      } ${!isSelected && customPrompts.length >= 9 ? 'opacity-40 cursor-not-allowed' : ''}`}
-                    >
+                      } ${(!isSelected && customPrompts.length >= 9) || customPromptEnabled ? 'opacity-40 cursor-not-allowed' : ''}`}>
                       {isSelected && (
-                        <span className="flex items-center justify-center w-4 h-4 rounded-full bg-emerald-500 text-[8px] font-bold text-white shadow shadow-emerald-500/40">
-                          {idx + 1}
-                        </span>
+                        <span className="flex items-center justify-center w-4 h-4 rounded-full bg-emerald-500 text-[8px] font-bold text-white shadow shadow-emerald-500/40">{idx + 1}</span>
                       )}
                       {p.name}
                     </button>
@@ -1076,9 +1520,11 @@ function AiGenPanel({ prompts, customPrompts, setCustomPrompts, selectedPromptNa
                 })}
               </div>
             ) : (
-              <div className="text-center py-6">
-                <p className="text-[11px] text-slate-600">暂无提示词模板，请先在自定义提示词面板中创建</p>
-              </div>
+              <button onClick={() => setManageTab('prompt')}
+                className="flex items-center gap-2 px-4 py-3 rounded-xl bg-slate-800/40 border border-dashed border-slate-700/40 hover:border-slate-600/60 text-[11px] text-slate-500 hover:text-slate-300 transition-all w-full justify-center">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"/></svg>
+                暂无提示词，点击创建
+              </button>
             )}
             {selectedPromptNames.length > 0 && selectedPromptNames.length < 9 && (
               <div className="mt-2 text-[10px] text-slate-600">
@@ -1087,10 +1533,18 @@ function AiGenPanel({ prompts, customPrompts, setCustomPrompts, selectedPromptNa
             )}
           </div>
           <div className="h-px bg-gradient-to-r from-transparent via-slate-700/40 to-transparent mx-6" />
-          {/* 全局风格 */}
-          <div className="px-6 py-4">
+
+          {/* 全局风格选择区 */}
+          <div className={`px-6 py-4 transition-all duration-300 ${customPromptEnabled ? 'opacity-30 pointer-events-none' : ''}`}>
             <div className="flex items-center justify-between mb-3">
-              <span className="text-[11px] font-medium text-slate-400">全局风格</span>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-medium text-slate-400">全局风格</span>
+                <button onClick={() => setManageTab('style')}
+                  className="w-5 h-5 rounded-md flex items-center justify-center text-slate-600 hover:text-slate-300 hover:bg-slate-800/80 transition-all"
+                  title="管理全局风格">
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                </button>
+              </div>
               <span className="text-[10px] text-slate-600 font-mono">
                 {selectedStyleName ? (
                   <span className="text-violet-400">已选择</span>
@@ -1105,19 +1559,15 @@ function AiGenPanel({ prompts, customPrompts, setCustomPrompts, selectedPromptNa
                 {styleList.map(p => {
                   const isSelected = selectedStyleName === p.name;
                   return (
-                    <button
-                      key={p.id}
-                      onClick={() => setSelectedStyleName(isSelected ? null : p.name)}
+                    <button key={p.id} onClick={() => setSelectedStyleName(isSelected ? null : p.name)}
+                      disabled={customPromptEnabled}
                       className={`relative flex items-center gap-1.5 px-3 py-2 rounded-xl text-[11px] font-medium transition-all duration-200 border active:scale-95 ${
                         isSelected
                           ? 'bg-violet-500/20 text-violet-300 border-violet-500/40 shadow-lg shadow-violet-500/10'
                           : 'bg-slate-800/60 text-slate-400 border-slate-700/50 hover:border-slate-600 hover:text-slate-300 hover:bg-slate-800/80'
-                      }`}
-                    >
+                      } ${customPromptEnabled ? 'opacity-40 cursor-not-allowed' : ''}`}>
                       {isSelected && (
-                        <span className="flex items-center justify-center w-4 h-4 rounded-full bg-violet-500 text-[8px] font-bold text-white shadow shadow-violet-500/40">
-                          ✓
-                        </span>
+                        <span className="flex items-center justify-center w-4 h-4 rounded-full bg-violet-500 text-[8px] font-bold text-white shadow shadow-violet-500/40">✓</span>
                       )}
                       {p.name}
                     </button>
@@ -1125,39 +1575,86 @@ function AiGenPanel({ prompts, customPrompts, setCustomPrompts, selectedPromptNa
                 })}
               </div>
             ) : (
-              <div className="text-center py-6">
-                <p className="text-[11px] text-slate-600">暂无全局风格模板，请先在自定义提示词面板中创建</p>
-              </div>
+              <button onClick={() => setManageTab('style')}
+                className="flex items-center gap-2 px-4 py-3 rounded-xl bg-slate-800/40 border border-dashed border-slate-700/40 hover:border-slate-600/60 text-[11px] text-slate-500 hover:text-slate-300 transition-all w-full justify-center">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"/></svg>
+                暂无全局风格，点击创建
+              </button>
             )}
           </div>
           <div className="h-px bg-gradient-to-r from-transparent via-slate-700/40 to-transparent mx-6" />
-          {/* 类似图片 */}
+
+          {/* 生成选项 - 自定义开启时禁用 */}
           <div className="px-6 py-4">
             <span className="text-[11px] font-medium text-slate-400 mb-3 block">生成选项</span>
-            <label className="flex items-center gap-5 px-4 py-3.5 rounded-xl bg-slate-800/40 border border-slate-700/40 cursor-pointer hover:border-slate-600/60 transition-all group">
-              <div className="relative w-14 h-7 rounded-full border-2 border-white/70 transition-all duration-300 flex-shrink-0 overflow-hidden">
+            <label title={!textModelEnabled ? '需要先开启文字模型（AI 分析）' : ''} className={`flex items-center gap-5 px-4 py-3.5 rounded-xl border transition-all group ${
+              !textModelEnabled || customPromptEnabled
+                ? 'bg-slate-800/10 border-slate-700/20 cursor-not-allowed opacity-40'
+                : 'bg-slate-800/40 border-slate-700/40 cursor-pointer hover:border-slate-600/60'
+            }`}>
+              <div className="relative w-14 h-7 rounded-full border-2 border-white/20 transition-all duration-300 flex-shrink-0 overflow-hidden">
                 <div className={`absolute inset-0 transition-all duration-300 ${similarImages ? 'bg-blue-500' : 'bg-slate-600'}`} />
                 <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-md transition-all duration-300 ${similarImages ? 'left-[30px]' : 'left-0.5'}`} />
               </div>
               <div className="flex-1 min-w-0">
-                <span className="text-xs text-slate-200 font-medium group-hover:text-white transition-colors">生成类似图片</span>
-                <span className="text-[10px] text-slate-500 ml-2">提示词中加入「参照原图内容生成」</span>
+                <span className="text-xs text-slate-200 font-medium group-hover:text-white transition-colors">无限想象</span>
+                <span className="text-[10px] text-slate-500 ml-2">使用文字模型看图+图片模型生成</span>
               </div>
-              <input type="checkbox" checked={similarImages} onChange={e => setSimilarImages(e.target.checked)} className="sr-only" />
+              <input type="checkbox" checked={similarImages}
+                onChange={e => { if (!customPromptEnabled && textModelEnabled) setSimilarImages(e.target.checked); }}
+                disabled={!textModelEnabled || customPromptEnabled}
+                className="sr-only" />
             </label>
           </div>
+          <div className="h-px bg-gradient-to-r from-transparent via-slate-700/40 to-transparent mx-6" />
+
+          {/* 自定义提示词推杆 */}
+          <div className="px-6 py-4">
+            <span className="text-[11px] font-medium text-slate-400 mb-3 block">其他选项</span>
+            <label className="flex items-center gap-5 px-4 py-3.5 rounded-xl bg-slate-800/40 border border-slate-700/40 cursor-pointer hover:border-slate-600/60 transition-all group">
+              <div className="relative w-14 h-7 rounded-full border-2 border-white/70 transition-all duration-300 flex-shrink-0 overflow-hidden">
+                <div className={`absolute inset-0 transition-all duration-300 ${customPromptEnabled ? 'bg-emerald-500' : 'bg-slate-600'}`} />
+                <div className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-md transition-all duration-300 ${customPromptEnabled ? 'left-[30px]' : 'left-0.5'}`} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <span className="text-xs text-slate-200 font-medium group-hover:text-white transition-colors">自定义提示词</span>
+                <span className="text-[10px] text-slate-500 ml-2">开启后自定义描述，其余选项自动禁用</span>
+              </div>
+              <input type="checkbox" checked={customPromptEnabled}
+                onChange={e => {
+                  const on = e.target.checked;
+                  if (on) {
+                    // 开启时重置并禁用所有选项
+                    setSelectedPromptNames([]);
+                    setCustomPrompts([]);
+                    setSelectedStyleName(null);
+                    setSimilarImages(false);
+                  }
+                  setCustomPromptEnabled(on);
+                  if (!on) setCustomPromptText('');
+                }}
+                className="sr-only" />
+            </label>
+
+            {/* 自定义提示词输入框 - 仅开启时显示 */}
+            {customPromptEnabled && (
+              <div className="mt-3 animate-[fadeIn_0.2s_ease-out]">
+                <textarea
+                  value={customPromptText}
+                  onChange={e => setCustomPromptText(e.target.value.slice(0, 500))}
+                  placeholder="输入自定义提示词，AI 将基于原图按此描述生成一张图片…"
+                  rows={4}
+                  className="w-full px-4 py-3 rounded-xl bg-slate-900/60 border border-emerald-500/30 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500/60 resize-none transition-all"
+                />
+                <p className="text-[9px] text-slate-600 mt-1.5 ml-1">最多 500 字，仅用于本次生成，不会保存</p>
+              </div>
+            )}
+          </div>
+
           {/* 生图按钮 */}
           <div className="px-6 pb-6">
-            <button
-              onClick={() => { onGenerate(); onClose(); }}
-              disabled={genLoading}
-              className="w-full py-3 rounded-xl text-sm font-bold tracking-wide
-                bg-gradient-to-r from-pink-500 to-violet-500
-                hover:from-pink-400 hover:to-violet-400
-                active:scale-[0.98] transition-all duration-200
-                text-white shadow-lg shadow-pink-500/25
-                disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100"
-            >
+            <button onClick={onGenerate} disabled={genLoading || !result}
+              className="w-full py-3 rounded-xl text-sm font-bold tracking-wide bg-gradient-to-r from-pink-500 to-violet-500 hover:from-pink-400 hover:to-violet-400 active:scale-[0.98] transition-all duration-200 text-white shadow-lg shadow-pink-500/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100">
               {genLoading ? (
                 <span className="flex items-center justify-center gap-2">
                   <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
@@ -1165,12 +1662,13 @@ function AiGenPanel({ prompts, customPrompts, setCustomPrompts, selectedPromptNa
                 </span>
               ) : (
                 <span className="flex items-center justify-center gap-2">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"/></svg>
                   生成 {(() => {
+                    if (customPromptEnabled) return '1 张';
                     const pc = selectedPromptNames.length;
                     const hasGlobal = !!selectedStyleName;
                     if (hasGlobal && pc === 0 && !similarImages) return '1 张';
-                    if (pc > 0 && hasGlobal) return `${pc} 张`;
+                    if (hasGlobal && pc > 0) return `${pc} 张`;
                     if (pc > 1) return `${pc} 张`;
                     return '9 张';
                   })()}
@@ -1185,20 +1683,40 @@ function AiGenPanel({ prompts, customPrompts, setCustomPrompts, selectedPromptNa
   );
 }
 
-// AI 生图网格（支持1张占满9格、N张≤9格、空位隐藏）
-function AiGenGrid({ images, progress, loading, error, imageHeight, progressPct, cellCount, total }) {
+
+
+
+
+function AiGenGrid({ images, progress, loading, error, imageHeight, progressPct, cellCount, total, onAddToHistory }) {
   const [visible, setVisible] = React.useState(false);
   const [previewImg, setPreviewImg] = React.useState(null); // { url, index }
+  const [addingToHistory, setAddingToHistory] = React.useState(false);
+  const [addedToHistory, setAddedToHistory] = React.useState(false);
+  const [gridDim, setGridDim] = React.useState(400); // 网格总尺寸（宽高相等）
   const gridRef = React.useRef(null);
+  const containerRef = React.useRef(null);
 
   React.useEffect(() => {
     requestAnimationFrame(() => setVisible(true));
   }, []);
 
-  // 根据图片高度计算网格尺寸
-  const imgH = imageHeight || 400;
-  const gap = 4; // 4px gap
-  const cellW = Math.floor((imgH - gap * 2) / 3);
+  // 用 ResizeObserver 跟踪容器尺寸，取容器宽高中较小值
+  React.useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const updateSize = () => {
+      const rect = el.getBoundingClientRect();
+      setGridDim(Math.max(100, Math.min(rect.width, rect.height)));
+    };
+    updateSize();
+    const ro = new ResizeObserver(updateSize);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // 网格尺寸
+  const gap = 4;
+  const cellW = Math.floor((gridDim - gap * 2) / 3);
   const gridW = cellW * 3 + gap * 2;
   const gridH = gridW;
 
@@ -1207,8 +1725,31 @@ function AiGenGrid({ images, progress, loading, error, imageHeight, progressPct,
   // 单图模式：只生成1张 → 占满整个3×3网格
   const isSingleImage = total === 1;
 
+  // 添加到历史记录 — 用 ref 避免闭包过期
+  const onAddRef = React.useRef(onAddToHistory);
+  onAddRef.current = onAddToHistory;
+  const addToHistory = async () => {
+    if (!previewImg || !onAddRef.current) return;
+    setAddingToHistory(true);
+    setAddedToHistory(false);
+    try {
+      const fileId = await onAddRef.current(previewImg.url);
+      if (fileId) {
+        setAddedToHistory(true);
+      }
+    } catch (e) {
+      console.error('添加到历史失败:', e);
+    } finally {
+      setAddingToHistory(false);
+    }
+  };
+
   // 关闭预览
-  const closePreview = () => setPreviewImg(null);
+  const closePreview = () => {
+    setPreviewImg(null);
+    setAddedToHistory(false);
+    setAddingToHistory(false);
+  };
 
   // 下载图片
   const downloadImage = (imgUrl, index) => {
@@ -1221,11 +1762,10 @@ function AiGenGrid({ images, progress, loading, error, imageHeight, progressPct,
   };
 
   return (
-    <>
-      <div className={`flex-shrink-0 transition-all duration-500 ease-out ${
+    <div className="flex flex-col flex-1 min-h-0 items-center w-full h-full">
+      <div ref={containerRef} className={`flex-1 min-h-0 w-full h-full transition-all duration-500 ease-out flex items-center justify-center ${
         visible ? 'opacity-100' : 'opacity-0'
       }`}
-      style={{ width: `${gridW}px`, height: `${gridH}px` }}
       >
         {/* 3x3 网格 */}
         <div ref={gridRef} className="grid" style={{ gridTemplateColumns: `repeat(3, ${cellW}px)`, gap: `${gap}px`, width: `${gridW}px`, height: `${gridH}px` }}>
@@ -1289,30 +1829,34 @@ function AiGenGrid({ images, progress, loading, error, imageHeight, progressPct,
             );
           })}
         </div>
+      </div>
 
-        {/* 进度条 */}
-        {loading && (
-          <div className="mt-2" style={{ width: `${gridW}px` }}>
-            <div className="flex items-center justify-between mb-0.5">
-              <span className="text-[9px] text-blue-400 font-mono">{progressPct}%</span>
-              <span className="text-[9px] text-slate-500">{progress}/{total || 9}</span>
+      {/* 进度条 — 在九宫格下方 */}
+      {loading && (
+        <div className="w-full flex items-center justify-center mt-3 transition-all duration-500 ease-out">
+          <div className="w-full" style={{ maxWidth: `${gridW}px` }}>
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs text-blue-400 font-mono">{progressPct}%</span>
+              <span className="text-xs text-slate-500">{progress}/{total || 9}</span>
             </div>
-            <div className="w-full h-1 bg-slate-800/80 rounded-full overflow-hidden">
+            <div className="w-full h-2 bg-slate-800/80 rounded-full overflow-hidden">
               <div
                 className="h-full bg-gradient-to-r from-blue-500 via-cyan-500 to-indigo-500 rounded-full transition-all duration-500 ease-out"
                 style={{ width: `${progressPct}%`, backgroundSize: '200% 100%', animation: 'shimmer 2s linear infinite' }}
               />
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* 错误 */}
-        {error && (
-          <div className="mt-2 p-2 rounded-lg bg-red-500/10 border border-red-500/20" style={{ width: `${gridW}px` }}>
-            <span className="text-[10px] text-red-400">{error}</span>
+      {/* 错误 */}
+      {error && (
+        <div className="w-full flex items-center justify-center mt-3">
+          <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20" style={{ maxWidth: `${gridW}px`, width: '100%' }}>
+            <span className="text-xs text-red-400">{error}</span>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* 悬浮大图预览 */}
       {previewImg && (
@@ -1348,6 +1892,44 @@ function AiGenGrid({ images, progress, loading, error, imageHeight, progressPct,
                   </svg>
                   下载原图
                 </button>
+                {onAddToHistory && (
+                  <button
+                    onClick={addToHistory}
+                    disabled={addingToHistory || addedToHistory}
+                    className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium
+                      active:scale-95 transition-all duration-200
+                      ${addedToHistory
+                        ? 'bg-emerald-600/80 text-emerald-100 cursor-default'
+                        : 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white shadow-lg shadow-emerald-500/25'
+                      }
+                      ${addingToHistory ? 'opacity-70 cursor-wait' : ''}
+                    `}
+                  >
+                    {addedToHistory ? (
+                      <>
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        已保存到历史
+                      </>
+                    ) : addingToHistory ? (
+                      <>
+                        <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                        </svg>
+                        保存中...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                        添加到历史
+                      </>
+                    )}
+                  </button>
+                )}
                 <button
                   onClick={closePreview}
                   className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium
@@ -1364,9 +1946,10 @@ function AiGenGrid({ images, progress, loading, error, imageHeight, progressPct,
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }
+
 
 // AI 智能建议（手动触发）
 function AiAdvice({ fileId, onRequest }) {
@@ -1423,143 +2006,6 @@ function AiAdvice({ fileId, onRequest }) {
   );
 }
 
-// 提示词管理面板
-function PromptPanel({ prompts, promptName, setPromptName, promptContent, setPromptContent, promptEditId, setPromptEditId, promptType, setPromptType, onSave, onDelete, onClose }) {
-  const [localName, setLocalName] = React.useState(promptName || '');
-  const [localContent, setLocalContent] = React.useState(promptContent || '');
-  const [localType, setLocalType] = React.useState(promptType || 'prompt');
-
-  React.useEffect(() => {
-    setLocalName(promptName || '');
-    setLocalContent(promptContent || '');
-    setLocalType(promptType || 'prompt');
-  }, [promptName, promptContent, promptType]);
-
-  return ReactDOM.createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-[600px] max-w-[90vw] max-h-[85vh] bg-slate-900 border border-slate-700/60 rounded-2xl shadow-2xl overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
-        {/* 标题栏 */}
-        <div className="flex items-center justify-between px-5 py-3 bg-slate-900/95 border-b border-slate-800/60">
-          <h2 className="text-sm font-semibold text-white">自定义提示词模板</h2>
-          <button onClick={onClose} className="w-6 h-6 rounded-md flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800 transition-all">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
-          </button>
-        </div>
-
-        <div className="flex-1 p-5 overflow-y-auto space-y-5">
-          {/* 已保存的模板列表 */}
-          {prompts.length > 0 && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-[11px] font-medium text-slate-400">已保存的模板</label>
-              </div>
-              {prompts.map(p => {
-                const ptype = p.type || 'prompt';
-                return (
-                <div key={p.id} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800/50 border border-slate-700/40">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${ptype === 'style' ? 'text-violet-300 bg-violet-500/20' : 'text-emerald-300 bg-emerald-500/20'}`}>
-                        {ptype === 'style' ? '全局风格' : '提示词'}
-                      </span>
-                      <div className="text-xs font-medium text-white truncate">{p.name}</div>
-                    </div>
-                    <div className="text-[10px] text-slate-500 truncate mt-0.5">{p.content.substring(0, 80)}{p.content.length > 80 ? '...' : ''}</div>
-                  </div>
-                  <button onClick={() => { setLocalName(p.name); setLocalContent(p.content); setLocalType(ptype); setPromptEditId(p.id); }}
-                    className="px-2 py-1 rounded text-[10px] bg-slate-700/50 hover:bg-blue-500/20 text-slate-400 hover:text-blue-300 transition-all flex-shrink-0">
-                    编辑
-                  </button>
-                  <button onClick={() => { if(confirm('删除此模板?')) onDelete(p.id); }}
-                    className="px-2 py-1 rounded text-[10px] bg-slate-700/50 hover:bg-red-500/20 text-slate-400 hover:text-red-300 transition-all flex-shrink-0">
-                    删除
-                  </button>
-                </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* 编辑区 */}
-          <div className="space-y-3">
-            <label className="text-[11px] font-medium text-slate-400">{promptEditId ? '编辑模板' : '新建模板'}</label>
-            <input
-              value={localName}
-              onChange={e => setLocalName(e.target.value)}
-              placeholder="模板名称（如：日系清新风）"
-              className="w-full px-3 py-2 rounded-lg bg-slate-800/70 border border-slate-700/50 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500/40 transition-all"
-            />
-            <textarea
-              value={localContent}
-              onChange={e => setLocalContent(e.target.value)}
-              placeholder="输入自定义提示词…"
-              rows={4}
-              className="w-full px-3 py-2 rounded-lg bg-slate-800/70 border border-slate-700/50 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500/40 transition-all resize-none"
-            />
-            {/* 类型切换 */}
-            <div>
-              <label className="text-[10px] text-slate-500 mb-2 block">类型（二选一）</label>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setLocalType('prompt')}
-                  className={`flex-1 px-3 py-2 rounded-lg text-[11px] font-medium border transition-all ${
-                    localType === 'prompt'
-                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-lg shadow-emerald-500/10'
-                      : 'bg-slate-800/60 text-slate-400 border-slate-700/50 hover:border-slate-600'
-                  }`}
-                >
-                  提示词
-                  <div className="text-[9px] mt-0.5 opacity-60">动作、表情、神态、天气等</div>
-                </button>
-                <button
-                  onClick={() => setLocalType('style')}
-                  className={`flex-1 px-3 py-2 rounded-lg text-[11px] font-medium border transition-all ${
-                    localType === 'style'
-                      ? 'bg-violet-500/20 text-violet-300 border-violet-500/40 shadow-lg shadow-violet-500/10'
-                      : 'bg-slate-800/60 text-slate-400 border-slate-700/50 hover:border-slate-600'
-                  }`}
-                >
-                  全局风格
-                  <div className="text-[9px] mt-0.5 opacity-60">所有图片共用一种风格</div>
-                </button>
-              </div>
-            </div>
-            <div className="flex justify-between items-center">
-              <p className="text-[10px] text-slate-500">{localContent.length} 字</p>
-              <div className="flex gap-2">
-                {promptEditId && (
-                  <button onClick={() => { setPromptEditId(null); setLocalName(''); setLocalContent(''); setLocalType('prompt'); }}
-                    className="px-3 py-1.5 rounded-lg text-[11px] bg-slate-700/50 hover:bg-slate-700/80 text-slate-400 transition-all">
-                    取消编辑
-                  </button>
-                )}
-                <button onClick={() => {
-                  if (!localName.trim() || !localContent.trim()) return;
-                  setPromptName(localName);
-                  setPromptContent(localContent);
-                  setPromptType(localType);
-                  onSave();
-                }}
-                  className="px-3 py-1.5 rounded-lg text-[11px] bg-blue-600/30 hover:bg-blue-600/50 text-blue-300 border border-blue-500/30 transition-all disabled:opacity-40"
-                  disabled={!localName.trim() || !localContent.trim()}>
-                  保存
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="border-t border-slate-800/60 pt-4">
-            <p className="text-[10px] text-slate-500 leading-relaxed">
-              <strong>提示词</strong>：动作、表情、神态、天气等非风格内容，在 AI 生图设置中可多选。<br/>
-              <strong>全局风格</strong>：所有图片共用一种风格，在 AI 生图设置中单选。<br/>
-              保存后的模板可以在 AI 生图设置中调用。
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>,
-    document.getElementById('admin-root')
-  );
-}
+// 提示词管理面板（两步式 UI：选类型 → 列表 + 编辑）
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);

@@ -44,6 +44,9 @@ function AdminPanel({ onClose }) {
   const [verStatus, setVerStatus] = useState('loading');
   const [changelog, setChangelog] = useState([]);
   const [verErr, setVerErr] = useState('');
+  const [verPage, setVerPage] = useState(1);
+  const [verDetail, setVerDetail] = useState(null);
+  const VER_PER_PAGE = 5;
   
   const apiCall = async (path, opts = {}) => {
     const res = await fetch(path, {
@@ -170,6 +173,53 @@ function AdminPanel({ onClose }) {
     }
   };
   
+  // ---- 开关切换（独立于保存按钮） ----
+  const toggleAiEnabled = async () => {
+    const newEnabled = !aiEnabled;
+    if (newEnabled && (!aiBaseUrl || !aiModel || !aiHasSaved)) {
+      setAiTestMsg('❌ 无法开启：请先配置并保存 API Key、Base URL 和 Model');
+      setTimeout(() => setAiTestMsg(''), 4000);
+      return;
+    }
+    setAiEnabled(newEnabled);
+    try {
+      const res = await apiCall('/api/settings/ai', {
+        method: 'POST',
+        body: JSON.stringify({ enabled: newEnabled }),
+      });
+      if (!res.ok) throw new Error('保存失败');
+      setAiTestMsg(newEnabled ? '✓ AI 已启用' : '✓ AI 已禁用');
+      setTimeout(() => setAiTestMsg(''), 3000);
+    } catch (e) {
+      setAiEnabled(!newEnabled);
+      setAiTestMsg('✕ 操作失败: ' + e.message);
+      setTimeout(() => setAiTestMsg(''), 4000);
+    }
+  };
+
+  const toggleImgEnabled = async () => {
+    const newEnabled = !imgEnabled;
+    if (newEnabled && (!imgBaseUrl || !imgModel || !imgHasSaved)) {
+      setImgTestMsg('❌ 无法开启：请先配置并保存 API Key、Base URL 和 Model');
+      setTimeout(() => setImgTestMsg(''), 4000);
+      return;
+    }
+    setImgEnabled(newEnabled);
+    try {
+      const res = await apiCall('/api/settings/ai/image', {
+        method: 'POST',
+        body: JSON.stringify({ enabled: newEnabled }),
+      });
+      if (!res.ok) throw new Error('保存失败');
+      setImgTestMsg(newEnabled ? '✓ 图片模型已启用' : '✓ 图片模型已禁用');
+      setTimeout(() => setImgTestMsg(''), 3000);
+    } catch (e) {
+      setImgEnabled(!newEnabled);
+      setImgTestMsg('✕ 操作失败: ' + e.message);
+      setTimeout(() => setImgTestMsg(''), 4000);
+    }
+  };
+
   // ---- AI 文字模型 ----
   const loadAiConfig = async () => {
     try {
@@ -316,7 +366,7 @@ function AdminPanel({ onClose }) {
   
   // ---- 版本 ----
   const loadVersions = async () => {
-    setVerStatus('loading'); setVerErr('');
+    setVerStatus('loading'); setVerErr(''); setVerPage(1); // Bug 修复：重置页码
     try {
       const res = await apiCall('/api/versions');
       if (res.ok) {
@@ -387,12 +437,12 @@ function AdminPanel({ onClose }) {
   
   // 通用 AI 模型配置渲染
   const renderAiModelSection = (title, icon, config) => {
-    const { hasSaved, apiKey, setApiKey, baseUrl, setBaseUrl, model, setModel, saveMsg, loadingSave, tested, testMsg, onTest, onSave, enabled, setEnabled, saveLabel } = config;
+    const { hasSaved, apiKey, setApiKey, baseUrl, setBaseUrl, model, setModel, saveMsg, loadingSave, tested, testMsg, onTest, onSave, onToggle, enabled, saveLabel } = config;
     return (
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <span className="text-sm text-slate-300">启用 {title}</span>
-          <button onClick={() => setEnabled(!enabled)}
+          <button onClick={onToggle}
             className={'relative w-11 h-6 rounded-full transition-all ' + (enabled ? 'bg-blue-500' : 'bg-slate-600')}>
             <span className={'absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ' + (enabled ? 'left-5' : 'left-0.5')} />
           </button>
@@ -445,7 +495,11 @@ function AdminPanel({ onClose }) {
           </div>
           <div className="flex items-center gap-2">
             <button onClick={doLogout} className="text-xs text-slate-500 hover:text-red-400 transition-colors">退出</button>
-            <button onClick={onClose} className="text-slate-500 hover:text-white transition-colors text-xl leading-none">×</button>
+            <button onClick={onClose} className="text-slate-500 hover:text-white transition-colors">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
           </div>
         </div>
         <div className="flex border-b border-slate-800">
@@ -471,7 +525,7 @@ function AdminPanel({ onClose }) {
                 hasSaved: aiHasSaved, apiKey: aiApiKey, setApiKey: setAiApiKey,
                 baseUrl: aiBaseUrl, setBaseUrl: setAiBaseUrl, model: aiModel, setModel: setAiModel,
                 saveMsg: aiSaveMsg, loadingSave: aiLoading, tested: aiTested, testMsg: aiTestMsg,
-                onTest: testAiApi, onSave: saveAiConfig, enabled: aiEnabled, setEnabled: setAiEnabled,
+                onTest: testAiApi, onSave: saveAiConfig, onToggle: toggleAiEnabled, enabled: aiEnabled,
                 saveLabel: '保存文字模型配置',
               })}
               
@@ -488,7 +542,7 @@ function AdminPanel({ onClose }) {
                 hasSaved: imgHasSaved, apiKey: imgApiKey, setApiKey: setImgApiKey,
                 baseUrl: imgBaseUrl, setBaseUrl: setImgBaseUrl, model: imgModel, setModel: setImgModel,
                 saveMsg: imgSaveMsg, loadingSave: imgLoading, tested: imgTested, testMsg: imgTestMsg,
-                onTest: testImgApi, onSave: saveImgConfig, enabled: imgEnabled, setEnabled: setImgEnabled,
+                onTest: testImgApi, onSave: saveImgConfig, onToggle: toggleImgEnabled, enabled: imgEnabled,
                 saveLabel: '保存图片模型配置',
               })}
             </div>
@@ -560,17 +614,110 @@ function AdminPanel({ onClose }) {
                 <div>
                   <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">更新日志</div>
                   <div className="space-y-2">
-                    {changelog.map((entry, i) => (
-                      <div key={i} className="bg-slate-800/20 rounded-lg p-3 border border-slate-700/30">
+                    {changelog
+                      .slice()
+                      .sort((a, b) => {
+                        const va = a.version.split('.').map(Number);
+                        const vb = b.version.split('.').map(Number);
+                        for (let i = 0; i < Math.max(va.length, vb.length); i++) {
+                          const d = (vb[i] || 0) - (va[i] || 0);
+                          if (d !== 0) return d;
+                        }
+                        return 0;
+                      })
+                      .slice((verPage - 1) * VER_PER_PAGE, verPage * VER_PER_PAGE)
+                      .map((entry) => (
+                      <div key={entry.version} className="bg-slate-800/20 rounded-lg p-3 border border-slate-700/30">
                         <div className="flex items-center gap-2">
-                          <span className="text-xs font-bold text-slate-300 mono">v{entry.version}</span>
-                          {i === 0 && <span className="text-[10px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded">当前</span>}
+                          <span
+                            className="text-xs font-bold text-slate-300 mono cursor-pointer underline decoration-dotted underline-offset-2 hover:text-blue-400 transition-colors"
+                            onClick={() => setVerDetail(entry)}
+                          >v{entry.version}</span>
+                          {entry.version === currentVer && <span className="text-[10px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded">当前</span>}
                         </div>
                         <div className="text-[10px] text-slate-500 mt-0.5">{entry.date}</div>
                         <div className="text-xs text-slate-400 mt-1 whitespace-pre-wrap">{entry.notes || entry.changelog || ''}</div>
                       </div>
                     ))}
                   </div>
+                  {changelog.length > VER_PER_PAGE && (
+                    <div className="flex items-center justify-center gap-2 mt-3">
+                      {verPage > 1 && (
+                        <button
+                          className="text-xs text-slate-400 bg-slate-800/30 hover:bg-slate-700/40 px-2.5 py-1 rounded"
+                          onClick={() => setVerPage(verPage - 1)}
+                        >上一页</button>
+                      )}
+                      <span className="text-xs text-slate-500">{verPage} / {Math.ceil(changelog.length / VER_PER_PAGE)}</span>
+                      {verPage * VER_PER_PAGE < changelog.length && (
+                        <button
+                          className="text-xs text-slate-400 bg-slate-800/30 hover:bg-slate-700/40 px-2.5 py-1 rounded"
+                          onClick={() => setVerPage(verPage + 1)}
+                        >下一页</button>
+                      )}
+                    </div>
+                  )}
+                  {verDetail && (
+                    <div
+                      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+                      onClick={() => setVerDetail(null)}
+                    >
+                      <div
+                        className="bg-slate-800 rounded-xl p-5 max-w-md w-full mx-4 border border-slate-600/50 shadow-2xl max-h-[80vh] overflow-y-auto"
+                        onClick={e => e.stopPropagation()}
+                      >
+                        <div className="flex items-center justify-between mb-4">
+                          <div>
+                            <span className="text-base font-bold text-white mono">v{verDetail.version}</span>
+                            <span className="text-xs text-slate-400 ml-2">{verDetail.date}</span>
+                            {verDetail.version === currentVer && <span className="text-[10px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded ml-2">当前</span>}
+                          </div>
+                          <button
+                            className="text-slate-400 hover:text-white text-lg leading-none transition-colors"
+                            onClick={() => setVerDetail(null)}
+                          >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                          </button>
+                        </div>
+                        <div className="text-xs text-slate-300 mb-4 bg-slate-700/30 rounded-lg p-3">
+                          {verDetail.notes || verDetail.changelog || ''}
+                        </div>
+                        {verDetail.detail && verDetail.detail.sections ? (
+                          <div className="space-y-3">
+                            {verDetail.detail.sections.map((sec, si) => (
+                              <div key={si}>
+                                <div className={
+                                  sec.type === 'added' ? 'text-xs font-bold text-emerald-400 mb-1.5' :
+                                  sec.type === 'changed' ? 'text-xs font-bold text-amber-400 mb-1.5' :
+                                  sec.type === 'fixed' ? 'text-xs font-bold text-blue-400 mb-1.5' :
+                                  sec.type === 'removed' ? 'text-xs font-bold text-red-400 mb-1.5' :
+                                  'text-xs font-bold text-slate-400 mb-1.5'
+                                }>
+                                  {sec.type === 'added' ? '\ud83d\udfe2 新增' :
+                                   sec.type === 'changed' ? '\ud83d\udfe1 优化' :
+                                   sec.type === 'fixed' ? '\ud83d\udfe5 修复' :
+                                   sec.type === 'removed' ? '\ud83d\udfe4 移除' :
+                                   sec.type}
+                                </div>
+                                <ul className="space-y-1">
+                                  {sec.items.map((item, ii) => (
+                                    <li key={ii} className="text-xs text-slate-400 pl-3 flex items-start gap-1.5">
+                                      <span className="text-slate-400 mr-1.5">{ii + 1}.</span>
+                                      <span>{item}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-xs text-slate-500 italic">暂无详细更新内容</div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
               <div className="bg-slate-800/20 rounded-xl p-3 border border-slate-700/30">

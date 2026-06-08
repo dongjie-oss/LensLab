@@ -30,8 +30,8 @@ DEFAULT_CONFIG = {
     },
     "ai": {
         "api_key": "",
-        "base_url": "https://api.openai.com/v1",
-        "model": "gpt-4o-mini",
+        "base_url": "https://apihub.agnes-ai.com/v1",
+        "model": "agnes-2.0-flash",
         "enabled": False,
     },
     "ai_image": {
@@ -39,6 +39,10 @@ DEFAULT_CONFIG = {
         "base_url": "https://apihub.agnes-ai.com/v1",
         "model": "agnes-image-2.1-flash",
         "enabled": False,
+        "max_concurrent": 2,
+        "request_interval": 3,
+        "max_429_retries": 3,
+        "429_backoff_base": 15,
     },
 }
 

@@ -26,20 +26,13 @@ if (!document.getElementById('ai-gen-styles')) {
       from { opacity: 0; transform: scale(0.9); }
       to { opacity: 1; transform: scale(1); }
     }
-    @keyframes fullScreenSlideIn {
-      0% { opacity: 0; transform: translateY(-30px) scale(0.95); }
-      100% { opacity: 1; transform: translateY(0) scale(1); }
+    . {
+      transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1), margin-right 0.5s cubic-bezier(0.16, 1, 0.3, 1);
     }
-    @keyframes dropZoneHide {
-      0% { opacity: 1; transform: translateY(0) scale(1); height: auto; }
-      99% { opacity: 0; transform: translateY(10px) scale(0.98); height: 0; padding: 0; margin: 0; }
-      100% { opacity: 0; transform: translateY(10px) scale(0.98); height: 0; padding: 0; margin: 0; display: none; }
+    . {
+      transform: translateX(-80px);
+      margin-right: -80px;
     }
-    @keyframes gridReveal {
-      0% { opacity: 0; transform: translateY(20px) scale(0.95); }
-      100% { opacity: 1; transform: translateY(0) scale(1); }
-    }
-
   `;
   document.head.appendChild(style);
 }
@@ -136,17 +129,14 @@ function Histogram({
 function ModeSelector({
   modes,
   current,
-  onChange,
-  disabled
+  onChange
 }) {
   return /*#__PURE__*/React.createElement("div", {
     className: "flex flex-wrap gap-2"
   }, modes.map(m => /*#__PURE__*/React.createElement("button", {
     key: m.key,
-    onClick: () => {
-      if (!disabled) onChange(current === m.key ? null : m.key);
-    },
-    className: `px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${disabled ? 'bg-slate-800/30 text-slate-600 border border-slate-700/30 cursor-not-allowed' : current === m.key ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40' : 'bg-slate-800/50 text-slate-400 border border-slate-700/50 hover:border-slate-600'}`
+    onClick: () => onChange(current === m.key ? null : m.key),
+    className: `px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${current === m.key ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40' : 'bg-slate-800/50 text-slate-400 border border-slate-700/50 hover:border-slate-600'}`
   }, m.name, /*#__PURE__*/React.createElement("span", {
     className: "ml-1 text-xs opacity-60"
   }, m.rows, "\xD7", m.cols))));
@@ -229,7 +219,6 @@ function App() {
   });
   const fileInputRef = useRef(null);
   const folderInputRef = useRef(null);
-  const textInputRef = useRef(null);
   const containerRef = useRef(null);
   const [containerDims, setContainerDims] = useState({
     w: 0,
@@ -239,9 +228,7 @@ function App() {
   const toggleAdmin = () => setShowAdmin(v => !v);
   const imgRef = useRef(null);
   const [aiEnabled, setAiEnabled] = useState(false);
-  const [aiImageEnabled, setAiImageEnabled] = useState(false);
   const [aiSaved, setAiSaved] = useState(false);
-  const [aiImageSaved, setAiImageSaved] = useState(false);
   const [activeFileId, setActiveFileId] = useState(null);
   const [batchStatus, setBatchStatus] = useState({
     inProgress: false,
@@ -264,17 +251,6 @@ function App() {
   const [showAiGenPanel, setShowAiGenPanel] = useState(false);
   const [selectedStyleName, setSelectedStyleName] = useState(null); // 全局风格（单选，可反选）
   const [similarImages, setSimilarImages] = useState(false);
-  const [customPromptEnabled, setCustomPromptEnabled] = useState(false);
-  const [customPromptText, setCustomPromptText] = useState('');
-  // 文字生图
-  const [textPrompt, setTextPrompt] = useState('');
-  const [textGenLoading, setTextGenLoading] = useState(false);
-  const [textGenImages, setTextGenImages] = useState([]);
-  const [textGenProgress, setTextGenProgress] = useState(0);
-  const [isTextGenMode, setIsTextGenMode] = useState(true);
-  const [textGenError, setTextGenError] = useState(null);
-  const [textGenTotal, setTextGenTotal] = useState(9);
-  const [textGenTaskId, setTextGenTaskId] = useState('');
   const genTimerRef = useRef(null);
   const aiAdviceRef = useRef(null);
   const [multiSelect, setMultiSelect] = useState(false);
@@ -314,21 +290,9 @@ function App() {
     fetch(`${API_BASE}/api/history`).then(r => r.json()).then(d => setHistory(d.items));
     fetch(`${API_BASE}/api/settings/ai`).then(r => r.json()).then(d => {
       setAiEnabled(d.enabled);
-      setAiImageEnabled(d.image_enabled);
       setAiSaved(d.has_saved);
-      setAiImageSaved(d.image_has_saved);
     }).catch(() => {});
     loadPrompts();
-  }, []);
-
-  // 组件卸载时清除轮询定时器
-  useEffect(() => {
-    return () => {
-      if (genTimerRef.current) {
-        clearInterval(genTimerRef.current);
-        genTimerRef.current = null;
-      }
-    };
   }, []);
 
   // 模式切换时自动重新分析（历史文件中）
@@ -360,7 +324,6 @@ function App() {
 
   // 批量处理文件
   const handleFiles = async fileList => {
-    setIsTextGenMode(false);
     if (genFileId) {
       alert('AI 生成中，请等待完成或取消后再上传');
       return;
@@ -458,159 +421,24 @@ function App() {
     setLoading(false);
   };
 
-  // 文字生图
-  const handleTextGenerate = async () => {
-    if (!textPrompt.trim()) return;
-    setTextGenLoading(true);
-    setTextGenError(null);
-    setTextGenImages([]);
-    setTextGenProgress(0);
-    setTextGenTotal(9);
-    try {
-      const fd = new FormData();
-      fd.append('text', textPrompt.trim());
-      fd.append('similar', String(true));
-      fd.append('num_images', '9');
-      if (selectedStyleName) {
-        const tpl = promptTemplates.find(t => t.name === selectedStyleName);
-        if (tpl) {
-          fd.append('global_style', JSON.stringify({
-            name: tpl.name,
-            content: tpl.content
-          }));
-        }
-      }
-      if (customPrompts.length > 0) {
-        fd.append('custom_prompts_json', JSON.stringify(customPrompts.map(p => ({
-          name: p.name,
-          content: p.content
-        }))));
-      }
-      const res = await fetch(`${API_BASE}/api/generate/text-image`, {
-        method: 'POST',
-        body: fd
-      });
-      const data = await res.json();
-      if (data.ok && data.task_id) {
-        setTextGenTaskId(data.task_id);
-        pollTextGeneration(data.task_id);
-      } else {
-        setTextGenError(data.error || '启动失败');
-        setTextGenLoading(false);
-      }
-    } catch (err) {
-      setTextGenError('网络错误');
-      setTextGenLoading(false);
-    }
-  };
-
-  // 轮询文字生图任务
-  const pollTextGeneration = taskId => {
-    const poll = async () => {
-      try {
-        const res = await fetch(`${API_BASE}/api/generate/task/${taskId}`);
-        const data = await res.json();
-        if (!data.ok || !data.task) {
-          setTextGenError('任务不存在');
-          setTextGenLoading(false);
-          return;
-        }
-        const t = data.task;
-        setTextGenImages(t.images || []);
-        setTextGenProgress(t.progress || 0);
-        setTextGenTotal(t.total || 9);
-        if (t.status === 'done') {
-          clearInterval(genTimerRef.current);
-          setTextGenLoading(false);
-        } else if (t.status === 'failed' || t.status === 'cancelled') {
-          clearInterval(genTimerRef.current);
-          setTextGenLoading(false);
-          setTextGenError(t.error || '生成取消');
-        } else {
-          // 轮询中
-        }
-      } catch {
-        clearInterval(genTimerRef.current);
-        setTextGenLoading(false);
-        setTextGenError('轮询失败');
-      }
-    };
-    if (genTimerRef.current) clearInterval(genTimerRef.current);
-    genTimerRef.current = setInterval(poll, 2000);
-    poll();
-  };
-
-  // 停止文字生图
-  const handleCancelTextGen = async () => {
-    if (!textGenTaskId) return;
-    try {
-      const fd = new FormData();
-      fd.append('task_id', textGenTaskId);
-      await fetch(`${API_BASE}/api/generate/cancel`, {
-        method: 'POST',
-        body: fd
-      });
-    } catch {}
-    clearInterval(genTimerRef.current);
-    setTextGenLoading(false);
-    setTextGenError('已手动停止');
-  };
-
   // AI 生图
   const startGeneration = async (fileId, options = {}) => {
     const {
-      similarImages = false,
+      similar = false,
       selectedStyleName = null
     } = options;
-    const similar = similarImages;
-
-    // === 自定义提示词模式 ===
-    if (customPromptEnabled && customPromptText.trim()) {
-      if (genTimerRef.current) clearInterval(genTimerRef.current);
-      setGenLoading(true);
-      setGenError(null);
-      setGenImages([]);
-      setGenProgress(0);
-      setGenTotal(1);
-      setAiGenActive(true);
-      setGenFileId(fileId);
-      try {
-        const fd = new FormData();
-        fd.append('file_id', fileId);
-        fd.append('custom_prompt', customPromptText.trim());
-        const res = await fetch(`${API_BASE}/api/generate/custom-prompt`, {
-          method: 'POST',
-          body: fd
-        });
-        const data = await res.json();
-        if (data.ok && data.task_id) {
-          setGenTaskId(data.task_id);
-          pollGeneration(data.task_id, fileId);
-        } else {
-          setGenError(data.error || '启动失败');
-          setGenLoading(false);
-          setGenFileId(null);
-        }
-      } catch (err) {
-        setGenError('网络错误');
-        setGenLoading(false);
-        setGenFileId(null);
-      }
-      return;
-    }
-
     // 🔴 先计算 numImages，再 set state
     const promptCount = customPrompts.length;
     const hasGlobal = !!selectedStyleName;
-    let numImages;
-    if (similar) {
-      numImages = 9; // 无限想象 → 始终9张
-    } else if (hasGlobal && promptCount === 0) {
+    let numImages = 9;
+    if (hasGlobal && promptCount === 0 && !similar) {
       numImages = 1; // 只选全局风格 → 1张占满9格
-    } else if (promptCount > 0) {
-      numImages = promptCount; // 有提示词 → N张
-    } else {
-      numImages = 9; // 什么都不选 → 9张不同默认风格
+    } else if (!hasGlobal && promptCount === 1 && similar) {
+      numImages = 9; // 1个提示词+风格各异 → 9张完全不同内容
+    } else if (!hasGlobal && promptCount > 1) {
+      numImages = promptCount; // 多个提示词无全局 → N张
+    } else if (hasGlobal && promptCount > 0) {
+      numImages = promptCount; // 全局+提示词 → N张
     }
     // 清除旧轮询
     if (genTimerRef.current) clearInterval(genTimerRef.current);
@@ -634,13 +462,7 @@ function App() {
           }));
         }
       }
-      // 无限想象模式：始终传递 custom_prompts_json（即使空数组），后端优先用提示词
-      if (similar) {
-        fd.append('custom_prompts_json', JSON.stringify(customPrompts.map(p => ({
-          name: p.name,
-          content: p.content
-        }))));
-      } else if (customPrompts.length > 0) {
+      if (customPrompts.length > 0) {
         fd.append('custom_prompts_json', JSON.stringify(customPrompts.map(p => ({
           name: p.name,
           content: p.content
@@ -684,8 +506,6 @@ function App() {
     setGenFileId(null);
     setGenTotal(9);
     setGenError('已取消');
-    setCustomPromptEnabled(false);
-    setCustomPromptText('');
     setCustomPrompts([]);
     setSelectedPromptNames([]);
     if (genFileId) {
@@ -716,8 +536,6 @@ function App() {
             genTimerRef.current = null;
             setGenLoading(false);
             setGenFileId(null);
-            setCustomPromptEnabled(false);
-            setCustomPromptText('');
             setCustomPrompts([]);
             setSelectedPromptNames([]);
             if (data.task.status === 'failed') {
@@ -743,30 +561,6 @@ function App() {
   };
 
   // 选择历史（单击）
-  // 将 AI 生成的图片添加到历史记录
-  const handleAddToHistory = async imageUrl => {
-    try {
-      const fd = new FormData();
-      fd.append('image_url', imageUrl);
-      const res = await fetch(`${API_BASE}/api/history/from-generated`, {
-        method: 'POST',
-        body: fd
-      });
-      const data = await res.json();
-      if (data.ok) {
-        // 刷新历史列表
-        const h = await fetch(`${API_BASE}/api/history`).then(r => r.json());
-        setHistory(h.items);
-        return data.file_id;
-      } else {
-        console.error('添加到历史失败:', data.error);
-        return null;
-      }
-    } catch (e) {
-      console.error('添加到历史失败:', e);
-      return null;
-    }
-  };
   const selectHistory = async item => {
     // 多选模式下：切换选中状态，不预览
     if (multiSelect) {
@@ -788,7 +582,6 @@ function App() {
       setMode(null);
       setGenImages([]);
       setShowOverlay(true);
-      setIsTextGenMode(false);
     } catch (err) {
       alert('加载失败');
     }
@@ -805,7 +598,6 @@ function App() {
       setActiveFileId(null);
       setResult(null);
       setPreview(null);
-      setIsTextGenMode(false);
       setFile(null);
       setGenImages([]);
     }
@@ -852,7 +644,6 @@ function App() {
       setActiveFileId(null);
       setResult(null);
       setPreview(null);
-      setIsTextGenMode(false);
       setFile(null);
     }
   };
@@ -976,8 +767,7 @@ function App() {
   }, "\u533A\u57DF\u6A21\u5F0F"), /*#__PURE__*/React.createElement(ModeSelector, {
     modes: modes,
     current: mode,
-    onChange: setMode,
-    disabled: isTextGenMode
+    onChange: setMode
   })), /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-3"
   }, /*#__PURE__*/React.createElement("label", {
@@ -990,47 +780,7 @@ function App() {
   }), "\u663E\u793A\u6D4B\u5149\u70B9"), aiEnabled && /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-2"
   }, /*#__PURE__*/React.createElement("button", {
-    onClick: () => {
-      if (!isTextGenMode) aiAdviceRef.current?.();
-    },
-    disabled: isTextGenMode,
-    className: `flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all duration-200 ${isTextGenMode ? 'bg-slate-800/30 border-slate-700/30 text-slate-600 cursor-not-allowed' : 'bg-gradient-to-br from-slate-700/60 to-slate-800/80 hover:from-blue-500/25 hover:to-blue-600/20 border border-slate-600/50 hover:border-blue-500/40 text-slate-200 hover:text-blue-300'}`
-  }, /*#__PURE__*/React.createElement("svg", {
-    className: "w-3.5 h-3.5",
-    fill: "none",
-    stroke: "currentColor",
-    viewBox: "0 0 24 24"
-  }, /*#__PURE__*/React.createElement("path", {
-    strokeLinecap: "round",
-    strokeLinejoin: "round",
-    strokeWidth: 2,
-    d: "M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
-  })), "AI \u5206\u6790"), aiImageEnabled && /*#__PURE__*/React.createElement("button", {
-    onClick: () => {
-      setIsTextGenMode(true);
-      // 退出预览模式（如果正在查看历史图片）
-      setPreview(null);
-      // 等待 DOM 更新后滚动
-      setTimeout(() => {
-        if (textGenImages.length > 0) {
-          // 生成过：滚动到九宫格区域
-          const gridEl = document.querySelector('[data-ai-gen-grid]');
-          if (gridEl) gridEl.scrollIntoView({
-            behavior: 'smooth',
-            block: 'start'
-          });
-        } else {
-          // 没生成过：聚焦文字输入框
-          if (textInputRef && textInputRef.current) {
-            textInputRef.current.scrollIntoView({
-              behavior: 'smooth',
-              block: 'center'
-            });
-            setTimeout(() => textInputRef.current.focus(), 500);
-          }
-        }
-      }, 100);
-    },
+    onClick: () => aiAdviceRef.current?.(),
     className: "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-gradient-to-br from-slate-700/60 to-slate-800/80 hover:from-blue-500/25 hover:to-blue-600/20 border border-slate-600/50 hover:border-blue-500/40 text-slate-200 hover:text-blue-300 transition-all duration-200"
   }, /*#__PURE__*/React.createElement("svg", {
     className: "w-3.5 h-3.5",
@@ -1041,8 +791,8 @@ function App() {
     strokeLinecap: "round",
     strokeLinejoin: "round",
     strokeWidth: 2,
-    d: "M13 10V3L4 14h7v7l9-11h-7z"
-  })), "AI \u6587\u751F\u56FE"), genLoading && /*#__PURE__*/React.createElement("button", {
+    d: "M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+  })), "AI \u5206\u6790"), genLoading && /*#__PURE__*/React.createElement("button", {
     onClick: cancelGeneration,
     className: "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-gradient-to-br from-red-500/20 to-red-600/30 border border-red-500/40 text-red-300 hover:from-red-500/30 hover:to-red-600/40 transition-all"
   }, /*#__PURE__*/React.createElement("svg", {
@@ -1089,12 +839,10 @@ function App() {
     className: "text-[9px] text-slate-500"
   }, "+", 9 - selectedPromptNames.length, "\u9ED8\u8BA4")), /*#__PURE__*/React.createElement("button", {
     onClick: () => {
-      if (!isTextGenMode) {
-        loadPrompts();
-        setShowAiGenPanel(true);
-      }
+      loadPrompts();
+      setShowAiGenPanel(true);
     },
-    disabled: genLoading || showAiGenPanel || isTextGenMode,
+    disabled: genLoading || showAiGenPanel,
     className: "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed bg-gradient-to-br from-slate-700/60 to-slate-800/80 hover:from-blue-500/25 hover:to-blue-600/20 border border-slate-600/50 hover:border-blue-500/40 text-slate-200 hover:text-blue-300"
   }, genLoading ? /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-gradient-to-br from-red-500/20 to-red-600/30 border border-red-500/40 text-red-300"
@@ -1113,7 +861,7 @@ function App() {
     className: "opacity-75",
     fill: "currentColor",
     d: "M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-  })), "\u751F\u6210\u4E2D ", genProgress > 0 ? `${genProgress}/${genTotal}` : '') : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("svg", {
+  })), "\u751F\u6210\u4E2D ", genProgress > 0 ? `${genProgress}/9` : '') : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("svg", {
     className: "w-3.5 h-3.5",
     fill: "none",
     stroke: "currentColor",
@@ -1124,27 +872,9 @@ function App() {
     strokeWidth: 2,
     d: "M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
   })), "AI \u751F\u56FE"))))), /*#__PURE__*/React.createElement("div", {
-    className: `${preview ? 'flex-1 overflow-auto flex items-center justify-center p-8' : 'flex-1 flex flex-col px-8 pt-8 pb-0 min-h-0 overflow-hidden'} bg-[#080b12]`
-  }, !preview ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
-    className: "flex-1 flex flex-col  min-h-0 w-full"
-  }, textGenLoading || textGenImages.length > 0 ? /*#__PURE__*/React.createElement("div", {
-    "data-ai-gen-grid": true,
-    className: "w-full flex-1 min-h-0"
-  }, /*#__PURE__*/React.createElement(AiGenGrid, {
-    images: textGenImages,
-    progress: textGenProgress,
-    loading: textGenLoading,
-    error: textGenError,
-    total: textGenTotal,
-    progressPct: textGenTotal > 0 ? Math.round(textGenProgress / textGenTotal * 100) : 0,
-    onAddToHistory: handleAddToHistory
-  })) : /*#__PURE__*/React.createElement("div", {
-    className: "w-full max-w-4xl flex-1 flex items-center justify-center"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: `drop-zone w-full h-full rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all duration-300 ease-out ${dragOver ? 'drag-over' : ''}`,
-    style: {
-      minHeight: '200px'
-    },
+    className: "flex-1 overflow-auto flex items-center justify-center p-8 bg-[#080b12]"
+  }, !preview ? /*#__PURE__*/React.createElement("div", {
+    className: `drop-zone w-full max-w-lg aspect-video rounded-2xl flex flex-col items-center justify-center cursor-pointer ${dragOver ? 'drag-over' : ''}`,
     onDragOver: e => {
       e.preventDefault();
       setDragOver(true);
@@ -1153,7 +883,7 @@ function App() {
     onDrop: onDrop,
     onClick: () => fileInputRef.current?.click()
   }, /*#__PURE__*/React.createElement("svg", {
-    className: "w-12 h-12 text-slate-600 mb-3",
+    className: "w-12 h-12 text-slate-600 mb-4",
     fill: "none",
     stroke: "currentColor",
     viewBox: "0 0 24 24"
@@ -1166,82 +896,10 @@ function App() {
     className: "text-slate-400 text-sm"
   }, "\u62D6\u62FD\u56FE\u7247\u5230\u6B64\u5904\uFF0C\u6216\u70B9\u51FB\u9009\u62E9"), /*#__PURE__*/React.createElement("p", {
     className: "text-slate-600 text-xs mt-2"
-  }, "JPG / PNG")))), /*#__PURE__*/React.createElement("div", {
-    className: "flex-shrink-0 w-full flex items-center justify-center",
-    style: {
-      paddingBottom: 'env(safe-area-inset-bottom)',
-      background: '#080b12'
-    }
+  }, "\u652F\u6301 JPG / PNG")) : /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-6 transition-all duration-500 ease-out min-w-0"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "w-full max-w-4xl"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center gap-2 bg-[#0d1117] border border-slate-700/60 rounded-xl px-3 py-2.5 focus-within:border-blue-500/50 transition-colors"
-  }, /*#__PURE__*/React.createElement("svg", {
-    className: "w-4 h-4 text-slate-500 shrink-0",
-    fill: "none",
-    stroke: "currentColor",
-    viewBox: "0 0 24 24"
-  }, /*#__PURE__*/React.createElement("path", {
-    strokeLinecap: "round",
-    strokeLinejoin: "round",
-    strokeWidth: 2,
-    d: "M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
-  })), /*#__PURE__*/React.createElement("input", {
-    ref: textInputRef,
-    type: "text",
-    value: textPrompt,
-    onChange: e => setTextPrompt(e.target.value),
-    onKeyDown: e => {
-      if (e.key === 'Enter' && textPrompt.trim()) handleTextGenerate();
-    },
-    placeholder: "\u8F93\u5165\u6587\u5B57\u63CF\u8FF0\uFF0C\u76F4\u63A5\u751F\u6210\u4E5D\u5BAB\u683C...",
-    className: "flex-1 bg-transparent text-slate-200 text-sm placeholder-slate-600 outline-none"
-  }), /*#__PURE__*/React.createElement("button", {
-    onClick: handleTextGenerate,
-    disabled: !textPrompt.trim() || textGenLoading,
-    className: "px-4 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed bg-gradient-to-br from-blue-500/20 to-purple-500/20 hover:from-blue-500/30 hover:to-purple-500/30 border border-blue-500/30 hover:border-blue-400/50 text-blue-300 hover:text-blue-200"
-  }, textGenLoading ? /*#__PURE__*/React.createElement("span", {
-    className: "flex items-center gap-1"
-  }, /*#__PURE__*/React.createElement("svg", {
-    className: "animate-spin h-3 w-3",
-    viewBox: "0 0 24 24"
-  }, /*#__PURE__*/React.createElement("circle", {
-    className: "opacity-25",
-    cx: "12",
-    cy: "12",
-    r: "10",
-    stroke: "currentColor",
-    strokeWidth: "4",
-    fill: "none"
-  }), /*#__PURE__*/React.createElement("path", {
-    className: "opacity-75",
-    fill: "currentColor",
-    d: "M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-  })), "\u751F\u6210\u4E2D") : `生成${genTotal || 9}张`), textGenLoading && /*#__PURE__*/React.createElement("button", {
-    onClick: handleCancelTextGen,
-    className: "px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 bg-red-500/15 hover:bg-red-500/25 border border-red-500/30 hover:border-red-400/50 text-red-400 hover:text-red-300"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "flex items-center gap-1"
-  }, /*#__PURE__*/React.createElement("svg", {
-    className: "w-3 h-3",
-    fill: "currentColor",
-    viewBox: "0 0 24 24"
-  }, /*#__PURE__*/React.createElement("rect", {
-    x: "6",
-    y: "6",
-    width: "12",
-    height: "12",
-    rx: "2"
-  })), "\u505C\u6B62")))))) : /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center gap-6 transition-all duration-500 ease-out min-w-0",
-    style: {
-      height: '100%'
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "min-w-0 flex-1 overflow-hidden flex items-center justify-center",
-    style: {
-      minHeight: 0
-    }
+    className: "min-w-0 flex-1 overflow-hidden"
   }, /*#__PURE__*/React.createElement("div", {
     className: "image-container relative"
   }, /*#__PURE__*/React.createElement("img", {
@@ -1249,7 +907,7 @@ function App() {
     src: preview,
     alt: "preview",
     onLoad: onImageLoad,
-    className: "rounded-lg shadow-2xl max-h-[70vh] max-w-full object-contain"
+    className: "rounded-lg shadow-2xl max-h-[75vh] max-w-full object-contain"
   }), /*#__PURE__*/React.createElement(MeteringOverlay, {
     points: result?.metering_points,
     width: result?.width,
@@ -1257,20 +915,15 @@ function App() {
     imageWidth: imageDims.w,
     imageHeight: imageDims.h,
     visible: showOverlay && result && mode
-  }))), (genLoading || genImages.length > 0) && /*#__PURE__*/React.createElement("div", {
-    className: "flex-1 min-h-0 flex items-center justify-center"
-  }, /*#__PURE__*/React.createElement(AiGenGrid, {
+  }))), (genLoading || genImages.length > 0) && /*#__PURE__*/React.createElement(AiGenGrid, {
     images: genImages,
     progress: genProgress,
     loading: genLoading,
     error: genError,
+    imageHeight: imageDims.h,
     total: genTotal,
-    progressPct: genProgress > 0 ? Math.round(genProgress / genTotal * 100) : 0,
-    onAddToHistory: handleAddToHistory
-  }))))), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: isTextGenMode ? "none" : "flex"
-    },
+    progressPct: genProgress > 0 ? Math.round(genProgress / genTotal * 100) : 0
+  })))), /*#__PURE__*/React.createElement("div", {
     className: "w-72 bg-[#0d1117] border-l border-slate-800 flex flex-col overflow-hidden"
   }, /*#__PURE__*/React.createElement("div", {
     className: "p-4 border-b border-slate-800"
@@ -1343,10 +996,6 @@ function App() {
     setSelectedStyleName: setSelectedStyleName,
     similarImages: similarImages,
     setSimilarImages: setSimilarImages,
-    customPromptEnabled: customPromptEnabled,
-    setCustomPromptEnabled: setCustomPromptEnabled,
-    customPromptText: customPromptText,
-    setCustomPromptText: setCustomPromptText,
     genLoading: genLoading,
     result: result,
     onGenerate: () => {
@@ -1355,33 +1004,16 @@ function App() {
         return;
       }
       const fid = result.file_id;
-      if (customPromptEnabled && !customPromptText.trim()) {
-        alert("请输入自定义提示词");
-        return;
-      }
       setShowAiGenPanel(false);
-      setTimeout(() => {
-        if (customPromptEnabled) {
-          startGeneration(fid, {
-            customPrompt: true
-          });
-        } else {
-          startGeneration(fid, {
-            similarImages,
-            selectedStyleName
-          });
-        }
-      }, 100);
+      setTimeout(() => startGeneration(fid, {
+        similarImages,
+        selectedStyleName
+      }), 100);
     },
     onRefreshPrompts: loadPrompts,
     onDeletePrompt: deletePrompt,
     onSavePrompt: savePrompt,
-    onClose: () => {
-      setShowAiGenPanel(false);
-      setCustomPromptEnabled(false);
-      setCustomPromptText('');
-    },
-    textModelEnabled: aiEnabled
+    onClose: () => setShowAiGenPanel(false)
   }), document.getElementById('admin-root')));
 }
 
@@ -1439,18 +1071,13 @@ function AiGenPanel({
   setSelectedStyleName,
   similarImages,
   setSimilarImages,
-  customPromptEnabled,
-  setCustomPromptEnabled,
-  customPromptText,
-  setCustomPromptText,
   genLoading,
   onGenerate,
   result,
   onRefreshPrompts,
   onSavePrompt,
   onDeletePrompt,
-  onClose,
-  textModelEnabled
+  onClose
 }) {
   const promptList = (prompts || []).filter(p => (p.type || 'prompt') === 'prompt');
   const styleList = (prompts || []).filter(p => (p.type || 'prompt') === 'style');
@@ -1732,7 +1359,7 @@ function AiGenPanel({
   })))), /*#__PURE__*/React.createElement("div", {
     className: "h-px bg-gradient-to-r from-transparent via-slate-700/60 to-transparent mx-6"
   }), /*#__PURE__*/React.createElement("div", {
-    className: `px-6 pt-4 pb-3 transition-all duration-300 ${customPromptEnabled ? 'opacity-30 pointer-events-none' : ''}`
+    className: "px-6 pt-4 pb-3"
   }, /*#__PURE__*/React.createElement("div", {
     className: "flex items-center justify-between mb-3"
   }, /*#__PURE__*/React.createElement("div", {
@@ -1772,8 +1399,8 @@ function AiGenPanel({
     return /*#__PURE__*/React.createElement("button", {
       key: p.id,
       onClick: () => togglePrompt(p),
-      disabled: customPromptEnabled || !isSelected && customPrompts.length >= 9,
-      className: `relative flex items-center gap-1.5 px-3 py-2 rounded-xl text-[11px] font-medium transition-all duration-200 border active:scale-95 ${isSelected ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-lg shadow-emerald-500/10' : 'bg-slate-800/60 text-slate-400 border-slate-700/50 hover:border-slate-600 hover:text-slate-300 hover:bg-slate-800/80'} ${!isSelected && customPrompts.length >= 9 || customPromptEnabled ? 'opacity-40 cursor-not-allowed' : ''}`
+      disabled: !isSelected && customPrompts.length >= 9,
+      className: `relative flex items-center gap-1.5 px-3 py-2 rounded-xl text-[11px] font-medium transition-all duration-200 border active:scale-95 ${isSelected ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-lg shadow-emerald-500/10' : 'bg-slate-800/60 text-slate-400 border-slate-700/50 hover:border-slate-600 hover:text-slate-300 hover:bg-slate-800/80'} ${!isSelected && customPrompts.length >= 9 ? 'opacity-40 cursor-not-allowed' : ''}`
     }, isSelected && /*#__PURE__*/React.createElement("span", {
       className: "flex items-center justify-center w-4 h-4 rounded-full bg-emerald-500 text-[8px] font-bold text-white shadow shadow-emerald-500/40"
     }, idx + 1), p.name);
@@ -1795,7 +1422,7 @@ function AiGenPanel({
   }, "\u5269\u4F59 ", 9 - selectedPromptNames.length, " \u4E2A\u4F4D\u7F6E\u5C06\u4F7F\u7528\u9ED8\u8BA4\u98CE\u683C\u81EA\u52A8\u586B\u5145")), /*#__PURE__*/React.createElement("div", {
     className: "h-px bg-gradient-to-r from-transparent via-slate-700/40 to-transparent mx-6"
   }), /*#__PURE__*/React.createElement("div", {
-    className: `px-6 py-4 transition-all duration-300 ${customPromptEnabled ? 'opacity-30 pointer-events-none' : ''}`
+    className: "px-6 py-4"
   }, /*#__PURE__*/React.createElement("div", {
     className: "flex items-center justify-between mb-3"
   }, /*#__PURE__*/React.createElement("div", {
@@ -1834,8 +1461,7 @@ function AiGenPanel({
     return /*#__PURE__*/React.createElement("button", {
       key: p.id,
       onClick: () => setSelectedStyleName(isSelected ? null : p.name),
-      disabled: customPromptEnabled,
-      className: `relative flex items-center gap-1.5 px-3 py-2 rounded-xl text-[11px] font-medium transition-all duration-200 border active:scale-95 ${isSelected ? 'bg-violet-500/20 text-violet-300 border-violet-500/40 shadow-lg shadow-violet-500/10' : 'bg-slate-800/60 text-slate-400 border-slate-700/50 hover:border-slate-600 hover:text-slate-300 hover:bg-slate-800/80'} ${customPromptEnabled ? 'opacity-40 cursor-not-allowed' : ''}`
+      className: `relative flex items-center gap-1.5 px-3 py-2 rounded-xl text-[11px] font-medium transition-all duration-200 border active:scale-95 ${isSelected ? 'bg-violet-500/20 text-violet-300 border-violet-500/40 shadow-lg shadow-violet-500/10' : 'bg-slate-800/60 text-slate-400 border-slate-700/50 hover:border-slate-600 hover:text-slate-300 hover:bg-slate-800/80'}`
     }, isSelected && /*#__PURE__*/React.createElement("span", {
       className: "flex items-center justify-center w-4 h-4 rounded-full bg-violet-500 text-[8px] font-bold text-white shadow shadow-violet-500/40"
     }, "\u2713"), p.name);
@@ -1859,10 +1485,9 @@ function AiGenPanel({
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-[11px] font-medium text-slate-400 mb-3 block"
   }, "\u751F\u6210\u9009\u9879"), /*#__PURE__*/React.createElement("label", {
-    title: !textModelEnabled ? '需要先开启文字模型（AI 分析）' : '',
-    className: `flex items-center gap-5 px-4 py-3.5 rounded-xl border transition-all group ${!textModelEnabled || customPromptEnabled ? 'bg-slate-800/10 border-slate-700/20 cursor-not-allowed opacity-40' : 'bg-slate-800/40 border-slate-700/40 cursor-pointer hover:border-slate-600/60'}`
+    className: "flex items-center gap-5 px-4 py-3.5 rounded-xl bg-slate-800/40 border border-slate-700/40 cursor-pointer hover:border-slate-600/60 transition-all group"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "relative w-14 h-7 rounded-full border-2 border-white/20 transition-all duration-300 flex-shrink-0 overflow-hidden"
+    className: "relative w-14 h-7 rounded-full border-2 border-white/70 transition-all duration-300 flex-shrink-0 overflow-hidden"
   }, /*#__PURE__*/React.createElement("div", {
     className: `absolute inset-0 transition-all duration-300 ${similarImages ? 'bg-blue-500' : 'bg-slate-600'}`
   }), /*#__PURE__*/React.createElement("div", {
@@ -1871,63 +1496,14 @@ function AiGenPanel({
     className: "flex-1 min-w-0"
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-xs text-slate-200 font-medium group-hover:text-white transition-colors"
-  }, "\u65E0\u9650\u60F3\u8C61"), /*#__PURE__*/React.createElement("span", {
+  }, "\u98CE\u683C\u5404\u5F02"), /*#__PURE__*/React.createElement("span", {
     className: "text-[10px] text-slate-500 ml-2"
-  }, "\u4F7F\u7528\u6587\u5B57\u6A21\u578B\u770B\u56FE+\u56FE\u7247\u6A21\u578B\u751F\u6210")), /*#__PURE__*/React.createElement("input", {
+  }, "\u5B8C\u5168\u4E0D\u540C\u7684\u5185\u5BB9\uFF0C\u4E0D\u8981\u590D\u5236\u539F\u56FE\u7684\u4EFB\u4F55\u5143\u7D20")), /*#__PURE__*/React.createElement("input", {
     type: "checkbox",
     checked: similarImages,
-    onChange: e => {
-      if (!customPromptEnabled && textModelEnabled) setSimilarImages(e.target.checked);
-    },
-    disabled: !textModelEnabled || customPromptEnabled,
+    onChange: e => setSimilarImages(e.target.checked),
     className: "sr-only"
   }))), /*#__PURE__*/React.createElement("div", {
-    className: "h-px bg-gradient-to-r from-transparent via-slate-700/40 to-transparent mx-6"
-  }), /*#__PURE__*/React.createElement("div", {
-    className: "px-6 py-4"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "text-[11px] font-medium text-slate-400 mb-3 block"
-  }, "\u5176\u4ED6\u9009\u9879"), /*#__PURE__*/React.createElement("label", {
-    className: "flex items-center gap-5 px-4 py-3.5 rounded-xl bg-slate-800/40 border border-slate-700/40 cursor-pointer hover:border-slate-600/60 transition-all group"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "relative w-14 h-7 rounded-full border-2 border-white/70 transition-all duration-300 flex-shrink-0 overflow-hidden"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: `absolute inset-0 transition-all duration-300 ${customPromptEnabled ? 'bg-emerald-500' : 'bg-slate-600'}`
-  }), /*#__PURE__*/React.createElement("div", {
-    className: `absolute top-0.5 w-5 h-5 rounded-full bg-white shadow-md transition-all duration-300 ${customPromptEnabled ? 'left-[30px]' : 'left-0.5'}`
-  })), /*#__PURE__*/React.createElement("div", {
-    className: "flex-1 min-w-0"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "text-xs text-slate-200 font-medium group-hover:text-white transition-colors"
-  }, "\u81EA\u5B9A\u4E49\u63D0\u793A\u8BCD"), /*#__PURE__*/React.createElement("span", {
-    className: "text-[10px] text-slate-500 ml-2"
-  }, "\u5F00\u542F\u540E\u81EA\u5B9A\u4E49\u63CF\u8FF0\uFF0C\u5176\u4F59\u9009\u9879\u81EA\u52A8\u7981\u7528")), /*#__PURE__*/React.createElement("input", {
-    type: "checkbox",
-    checked: customPromptEnabled,
-    onChange: e => {
-      const on = e.target.checked;
-      if (on) {
-        // 开启时重置并禁用所有选项
-        setSelectedPromptNames([]);
-        setCustomPrompts([]);
-        setSelectedStyleName(null);
-        setSimilarImages(false);
-      }
-      setCustomPromptEnabled(on);
-      if (!on) setCustomPromptText('');
-    },
-    className: "sr-only"
-  })), customPromptEnabled && /*#__PURE__*/React.createElement("div", {
-    className: "mt-3 animate-[fadeIn_0.2s_ease-out]"
-  }, /*#__PURE__*/React.createElement("textarea", {
-    value: customPromptText,
-    onChange: e => setCustomPromptText(e.target.value.slice(0, 500)),
-    placeholder: "\u8F93\u5165\u81EA\u5B9A\u4E49\u63D0\u793A\u8BCD\uFF0CAI \u5C06\u57FA\u4E8E\u539F\u56FE\u6309\u6B64\u63CF\u8FF0\u751F\u6210\u4E00\u5F20\u56FE\u7247\u2026",
-    rows: 4,
-    className: "w-full px-4 py-3 rounded-xl bg-slate-900/60 border border-emerald-500/30 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500/60 resize-none transition-all"
-  }), /*#__PURE__*/React.createElement("p", {
-    className: "text-[9px] text-slate-600 mt-1.5 ml-1"
-  }, "\u6700\u591A 500 \u5B57\uFF0C\u4EC5\u7528\u4E8E\u672C\u6B21\u751F\u6210\uFF0C\u4E0D\u4F1A\u4FDD\u5B58"))), /*#__PURE__*/React.createElement("div", {
     className: "px-6 pb-6"
   }, /*#__PURE__*/React.createElement("button", {
     onClick: onGenerate,
@@ -1963,7 +1539,6 @@ function AiGenPanel({
     strokeWidth: 2,
     d: "M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"
   })), "\u751F\u6210 ", (() => {
-    if (customPromptEnabled) return '1 张';
     const pc = selectedPromptNames.length;
     const hasGlobal = !!selectedStyleName;
     if (hasGlobal && pc === 0 && !similarImages) return '1 张';
@@ -1980,37 +1555,19 @@ function AiGenGrid({
   imageHeight,
   progressPct,
   cellCount,
-  total,
-  onAddToHistory
+  total
 }) {
   const [visible, setVisible] = React.useState(false);
   const [previewImg, setPreviewImg] = React.useState(null); // { url, index }
-  const [addingToHistory, setAddingToHistory] = React.useState(false);
-  const [addedToHistory, setAddedToHistory] = React.useState(false);
-  const [gridDim, setGridDim] = React.useState(400); // 网格总尺寸（宽高相等）
   const gridRef = React.useRef(null);
-  const containerRef = React.useRef(null);
   React.useEffect(() => {
     requestAnimationFrame(() => setVisible(true));
   }, []);
 
-  // 用 ResizeObserver 跟踪容器尺寸，取容器宽高中较小值
-  React.useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const updateSize = () => {
-      const rect = el.getBoundingClientRect();
-      setGridDim(Math.max(100, Math.min(rect.width, rect.height)));
-    };
-    updateSize();
-    const ro = new ResizeObserver(updateSize);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  // 网格尺寸
-  const gap = 4;
-  const cellW = Math.floor((gridDim - gap * 2) / 3);
+  // 根据图片高度计算网格尺寸
+  const imgH = imageHeight || 400;
+  const gap = 4; // 4px gap
+  const cellW = Math.floor((imgH - gap * 2) / 3);
   const gridW = cellW * 3 + gap * 2;
   const gridH = gridW;
 
@@ -2019,31 +1576,8 @@ function AiGenGrid({
   // 单图模式：只生成1张 → 占满整个3×3网格
   const isSingleImage = total === 1;
 
-  // 添加到历史记录 — 用 ref 避免闭包过期
-  const onAddRef = React.useRef(onAddToHistory);
-  onAddRef.current = onAddToHistory;
-  const addToHistory = async () => {
-    if (!previewImg || !onAddRef.current) return;
-    setAddingToHistory(true);
-    setAddedToHistory(false);
-    try {
-      const fileId = await onAddRef.current(previewImg.url);
-      if (fileId) {
-        setAddedToHistory(true);
-      }
-    } catch (e) {
-      console.error('添加到历史失败:', e);
-    } finally {
-      setAddingToHistory(false);
-    }
-  };
-
   // 关闭预览
-  const closePreview = () => {
-    setPreviewImg(null);
-    setAddedToHistory(false);
-    setAddingToHistory(false);
-  };
+  const closePreview = () => setPreviewImg(null);
 
   // 下载图片
   const downloadImage = (imgUrl, index) => {
@@ -2054,11 +1588,12 @@ function AiGenGrid({
     link.click();
     document.body.removeChild(link);
   };
-  return /*#__PURE__*/React.createElement("div", {
-    className: "flex flex-col flex-1 min-h-0 items-center w-full h-full"
-  }, /*#__PURE__*/React.createElement("div", {
-    ref: containerRef,
-    className: `flex-1 min-h-0 w-full h-full transition-all duration-500 ease-out flex items-center justify-center ${visible ? 'opacity-100' : 'opacity-0'}`
+  return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    className: `flex-shrink-0 transition-all duration-500 ease-out ${visible ? 'opacity-100' : 'opacity-0'}`,
+    style: {
+      width: `${gridW}px`,
+      height: `${gridH}px`
+    }
   }, /*#__PURE__*/React.createElement("div", {
     ref: gridRef,
     className: "grid",
@@ -2122,21 +1657,19 @@ function AiGenGrid({
     }, /*#__PURE__*/React.createElement("span", {
       className: "text-[7px] text-slate-300 font-mono"
     }, img.label)));
-  }))), loading && /*#__PURE__*/React.createElement("div", {
-    className: "w-full flex items-center justify-center mt-3 transition-all duration-500 ease-out"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "w-full",
+  })), loading && /*#__PURE__*/React.createElement("div", {
+    className: "mt-2",
     style: {
-      maxWidth: `${gridW}px`
+      width: `${gridW}px`
     }
   }, /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center justify-between mb-1"
+    className: "flex items-center justify-between mb-0.5"
   }, /*#__PURE__*/React.createElement("span", {
-    className: "text-xs text-blue-400 font-mono"
+    className: "text-[9px] text-blue-400 font-mono"
   }, progressPct, "%"), /*#__PURE__*/React.createElement("span", {
-    className: "text-xs text-slate-500"
+    className: "text-[9px] text-slate-500"
   }, progress, "/", total || 9)), /*#__PURE__*/React.createElement("div", {
-    className: "w-full h-2 bg-slate-800/80 rounded-full overflow-hidden"
+    className: "w-full h-1 bg-slate-800/80 rounded-full overflow-hidden"
   }, /*#__PURE__*/React.createElement("div", {
     className: "h-full bg-gradient-to-r from-blue-500 via-cyan-500 to-indigo-500 rounded-full transition-all duration-500 ease-out",
     style: {
@@ -2144,16 +1677,13 @@ function AiGenGrid({
       backgroundSize: '200% 100%',
       animation: 'shimmer 2s linear infinite'
     }
-  })))), error && /*#__PURE__*/React.createElement("div", {
-    className: "w-full flex items-center justify-center mt-3"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "p-3 rounded-lg bg-red-500/10 border border-red-500/20",
+  }))), error && /*#__PURE__*/React.createElement("div", {
+    className: "mt-2 p-2 rounded-lg bg-red-500/10 border border-red-500/20",
     style: {
-      maxWidth: `${gridW}px`,
-      width: '100%'
+      width: `${gridW}px`
     }
   }, /*#__PURE__*/React.createElement("span", {
-    className: "text-xs text-red-400"
+    className: "text-[10px] text-red-400"
   }, error))), previewImg && /*#__PURE__*/React.createElement("div", {
     className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm",
     onClick: closePreview
@@ -2183,50 +1713,7 @@ function AiGenGrid({
     strokeLinejoin: "round",
     strokeWidth: 2,
     d: "M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-  })), "\u4E0B\u8F7D\u539F\u56FE"), onAddToHistory && /*#__PURE__*/React.createElement("button", {
-    onClick: addToHistory,
-    disabled: addingToHistory || addedToHistory,
-    className: `flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium
-                      active:scale-95 transition-all duration-200
-                      ${addedToHistory ? 'bg-emerald-600/80 text-emerald-100 cursor-default' : 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white shadow-lg shadow-emerald-500/25'}
-                      ${addingToHistory ? 'opacity-70 cursor-wait' : ''}
-                    `
-  }, addedToHistory ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("svg", {
-    className: "w-3.5 h-3.5",
-    fill: "none",
-    stroke: "currentColor",
-    viewBox: "0 0 24 24"
-  }, /*#__PURE__*/React.createElement("path", {
-    strokeLinecap: "round",
-    strokeLinejoin: "round",
-    strokeWidth: 2,
-    d: "M5 13l4 4L19 7"
-  })), "\u5DF2\u4FDD\u5B58\u5230\u5386\u53F2") : addingToHistory ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("svg", {
-    className: "w-3.5 h-3.5 animate-spin",
-    viewBox: "0 0 24 24"
-  }, /*#__PURE__*/React.createElement("circle", {
-    className: "opacity-25",
-    cx: "12",
-    cy: "12",
-    r: "10",
-    stroke: "currentColor",
-    strokeWidth: "4",
-    fill: "none"
-  }), /*#__PURE__*/React.createElement("path", {
-    className: "opacity-75",
-    fill: "currentColor",
-    d: "M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-  })), "\u4FDD\u5B58\u4E2D...") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("svg", {
-    className: "w-3.5 h-3.5",
-    fill: "none",
-    stroke: "currentColor",
-    viewBox: "0 0 24 24"
-  }, /*#__PURE__*/React.createElement("path", {
-    strokeLinecap: "round",
-    strokeLinejoin: "round",
-    strokeWidth: 2,
-    d: "M12 4v16m8-8H4"
-  })), "\u6DFB\u52A0\u5230\u5386\u53F2")), /*#__PURE__*/React.createElement("button", {
+  })), "\u4E0B\u8F7D\u539F\u56FE"), /*#__PURE__*/React.createElement("button", {
     onClick: closePreview,
     className: "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-slate-800 hover:bg-slate-700 active:scale-95 transition-all duration-200 text-slate-300"
   }, /*#__PURE__*/React.createElement("svg", {

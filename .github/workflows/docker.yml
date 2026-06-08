@@ -48,7 +48,7 @@ jobs:
             VERSION="latest"
           fi
           # 读取 backend/__version__.py 中的版本号
-          PY_VERSION=$(grep -oP '"\K[0-9]+\.[0-9]+\.[0-9]+' backend/__version__.py 2>/dev/null || echo "1.0.0")
+          PY_VERSION=$(grep -oP '"\K[0-9]+\.[0-9]+\.[0-9]+' backend/__version__.py 2>/dev/null || echo "1.0.1")
           echo "image_tag=${VERSION}" >> $GITHUB_OUTPUT
           echo "python_version=${PY_VERSION}" >> $GITHUB_OUTPUT
 

@@ -14,6 +14,8 @@ import re
 from pathlib import Path
 from typing import Optional
 
+from __version__ import __version__
+
 try:
     from .data_manager import load_data, save_data, CURRENT_DATA_VERSION
     from .config_manager import DATA_DIR
@@ -27,17 +29,23 @@ VERSIONS_FILE = DATA_DIR / "VERSIONS.json"
 
 DEFAULT_VERSIONS = {
     "current": {
-        "version": "1.0.0",
+        "version": __version__,
         "digest": "",
         "data_version": CURRENT_DATA_VERSION,
-        "date": "2026-06-05",
-        "notes": "v1.0.0 — AI生图策略重构 + 模板类型分类",
+        "date": "2026-06-06",
+        "notes": "v" + __version__ + " — 修复5项功能问题：AI按钮显隐/面板关闭/默认模型/Docker compose/图片响应式",
     },
     "changelog": [
         {
             "version": "1.0.0",
             "date": "2026-06-05",
             "notes": "AI生图策略重构 + 模板类型分类",
+            "digest": "",
+        },
+        {
+            "version": __version__,
+            "date": "2026-06-06",
+            "notes": "修复5项功能问题：AI按钮显隐/面板关闭/默认模型/Docker compose/图片响应式",
             "digest": "",
         }
     ],
@@ -127,7 +135,7 @@ def check_for_update() -> dict:
     3. 和当前版本对比
     """
     current = get_current_version()
-    current_ver = current.get("version", "1.0.0")
+    current_ver = current.get("version", __version__)
 
     # 查远端
     tags = _fetch_acr_tags()
