@@ -27,28 +27,97 @@ logger = logging.getLogger(__name__)
 
 VERSIONS_FILE = DATA_DIR / "VERSIONS.json"
 
+# 代码内嵌的权威 changelog（每次发版必须同步更新此列表）
+# 启动时自动与持久化的 VERSIONS.json 合并，确保 bind mount 下旧版本升级不丢条目
+BUNDLED_CHANGELOG = [
+    {
+        "version": "1.0.0",
+        "date": "2026-06-03",
+        "notes": "初始版本 — 区域曝光分析、AI智能分析、AI生图、模板管理",
+        "digest": "",
+        "detail": {
+            "sections": [
+                {"type": "added", "items": [
+                    "照片上传、缩略图浏览与区域曝光分析功能",
+                    "AI图表分析（直方图/分区亮度）",
+                    "AI智能生图（9种预设风格模板）",
+                    "用户管理后台（认证、模型配置、版本查看）",
+                    "Docker Compose 一键部署",
+                    "GitHub Actions CI/CD 自动构建推送到阿里云 ACR",
+                ]}
+            ]
+        },
+    },
+    {
+        "version": "1.0.1",
+        "date": "2026-06-07",
+        "notes": "新增自定义提示词功能，优化AI生图策略与UI交互",
+        "digest": "",
+        "detail": {
+            "sections": [
+                {"type": "changed", "items": [
+                    "AI生图速度优化：LLM describe + generate_prompts 并行执行",
+                    "并发参数提升：MAX_CONCURRENT 2→3，REQUEST_INTERVAL 3s→1s",
+                    "前端按钮文案动态化：根据实际生成数量显示",
+                ]},
+                {"type": "added", "items": [
+                    "无限想象优先级系统：全局风格 > 用户提示词 > 无限想象",
+                    "AiGenPanel 生成按钮回调支持自定义提示词模式",
+                ]},
+                {"type": "refactor", "items": [
+                    "elif 分支从 6 个精简为 4 个，逻辑更清晰",
+                    "check_startup.py api_key 空值不再阻塞容器启动",
+                ]},
+            ]
+        },
+    },
+    {
+        "version": "1.0.2",
+        "date": "2026-06-12",
+        "notes": "v1.0.2 — 新增系统清理功能 + UI 优化 + 配置迁移安全",
+        "digest": "",
+        "detail": {
+            "sections": [
+                {"type": "新增", "items": [
+                    "后台管理系统 tab：自动/手动清理 AI 生成临时图片",
+                    "AI 生图后自动检查 generated/ 大小，超过阈值自动清理旧文件",
+                    "手动清理按钮一键清空临时图片",
+                    "config_manager.py 配置迁移：备份→合并→验证→回滚机制",
+                ]},
+                {"type": "优化", "items": [
+                    "AI 生图设置面板：比例 → 方向 → 分辨率改为单行排列",
+                    "首页文生图快捷面板：比例 → 方向 → 分辨率单行排列",
+                    "load_config() 仅新增键时才写入",
+                ]},
+                {"type": "修复", "items": [
+                    "AI 生图弹窗白屏问题（selectedRatio 未传入子组件）",
+                    "自定义提示词模式下比例/分辨率不传递给后端",
+                    "后台管理 API 配置丢失问题",
+                ]},
+            ]
+        },
+    },
+]
+
+
+def _parse_semver_str(ver: str) -> tuple:
+    """从版本字符串解析 (major, minor, patch)"""
+    import re as _re
+    m = _re.match(r"(\d+)\.(\d+)\.(\d+)", ver)
+    if m:
+        return (int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    return (0, 0, 0)
+
+
 DEFAULT_VERSIONS = {
     "current": {
         "version": __version__,
         "digest": "",
         "data_version": CURRENT_DATA_VERSION,
-        "date": "2026-06-06",
-        "notes": "v" + __version__ + " — AI生图速度优化、无限想象优先级系统、elif分支重构",
+        "date": "2026-06-12",
+        "notes": "v" + __version__ + " — 新增系统清理功能 + UI 优化 + 配置迁移安全",
     },
-    "changelog": [
-        {
-            "version": "1.0.0",
-            "date": "2026-06-05",
-            "notes": "AI生图策略重构 + 模板类型分类",
-            "digest": "",
-        },
-        {
-            "version": __version__,
-            "date": "2026-06-06",
-            "notes": "AI生图速度优化、无限想象优先级系统、elif分支重构",
-            "digest": "",
-        }
-    ],
+    "changelog": [item.copy() for item in BUNDLED_CHANGELOG],
 }
 
 # ACR 仓库配置
@@ -60,24 +129,47 @@ ACR_PASSWORD = os.getenv("ACR_PASSWORD", "")
 
 
 def load_versions() -> dict:
+    """加载版本信息，启动时自动同步代码版本与持久化数据"""
+    # 先用 DEFAULT_VERSIONS 的 current 作为后备，changelog 先读持久化的
     versions = load_data(VERSIONS_FILE, lambda: DEFAULT_VERSIONS.copy())
     
-    # 自动升级：如果持久化的 changelog 版本比代码默认值旧，就更新
-    default_changelog = DEFAULT_VERSIONS.get("changelog", [])
-    persisted_changelog = versions.get("changelog", [])
+    code_ver = _parse_semver_str(__version__)
+    persist_ver = _parse_semver_str(versions.get("current", {}).get("version", "0.0.0"))
     
-    if default_changelog and persisted_changelog:
-        # 比较默认值里最新的一条和持久化里最新的一条
-        default_latest = default_changelog[0].get("version", "") if default_changelog else ""
-        persisted_latest = persisted_changelog[0].get("version", "") if persisted_changelog else ""
-        
-        if default_latest and default_latest != persisted_latest:
-            # 用默认值覆盖旧的 changelog
-            versions["changelog"] = [item.copy() for item in default_changelog]
-            # 也更新 current 信息
-            versions["current"] = DEFAULT_VERSIONS["current"].copy()
-            save_versions(versions)
-            logger.info(f"版本信息已自动更新: {persisted_latest} -> {default_latest}")
+    changed = False
+    
+    # 规则1：代码版本 > 持久化版本 → 同步 current + 合并 changelog
+    if code_ver > persist_ver:
+        versions["current"]["version"] = __version__
+        versions["current"]["notes"] = DEFAULT_VERSIONS["current"]["notes"]
+        versions["current"]["date"] = DEFAULT_VERSIONS["current"]["date"]
+        # digest 保留（可能已有远程拉取写入的值）
+        changed = True
+        logger.info(f"版本自动升级: {persist_ver} → {__version__}")
+    
+    # 规则2：合并代码内嵌的 changelog 条目（去重，保留 detail）
+    persist_list = versions.get("changelog", [])
+    persist_versions = {e["version"]: e for e in persist_list}
+    merged = False
+    for entry in BUNDLED_CHANGELOG:
+        ver = entry["version"]
+        if ver not in persist_versions:
+            # 新增条目
+            persist_list.append(entry.copy())
+            merged = True
+        elif not persist_versions[ver].get("detail") and entry.get("detail"):
+            # 旧条目缺少 detail，补充
+            persist_versions[ver]["detail"] = entry["detail"]
+            merged = True
+    if merged:
+        # 按版本号降序排列
+        persist_list.sort(key=lambda e: _parse_semver_str(e["version"]), reverse=True)
+        versions["changelog"] = persist_list
+        changed = True
+        logger.info("changelog 条目已合并同步")
+    
+    if changed:
+        save_versions(versions)
     
     return versions
 
