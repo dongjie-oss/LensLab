@@ -1,10 +1,10 @@
 # =============================================
-# 镜头演算室 · LensLab v1.0.1
+# 镜头演算室 · LensLab v1.0.2
 # 三阶段构建：Node 编译 → Python 依赖 → 精简运行时
 # 目标：从 2.4GB 压到 ~300-500MB
 # =============================================
 
-ARG BUILD_VERSION=1.0.1
+ARG BUILD_VERSION=1.0.2
 
 # ---- Stage 1: 前端编译 ----
 FROM node:20-alpine AS frontend-builder
@@ -32,7 +32,7 @@ RUN python -m venv /install/venv && \
 # ---- Stage 3: 运行时（精简镜像）----
 FROM python:3.11-slim
 
-ARG BUILD_VERSION=1.0.1
+ARG BUILD_VERSION=1.0.2
 
 WORKDIR /app
 

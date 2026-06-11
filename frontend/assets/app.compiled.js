@@ -266,6 +266,18 @@ function App() {
   const [similarImages, setSimilarImages] = useState(false);
   const [customPromptEnabled, setCustomPromptEnabled] = useState(false);
   const [customPromptText, setCustomPromptText] = useState('');
+  // 比例和分辨率选择
+  const [selectedRatio, setSelectedRatio] = useState('4:3');
+  const [selectedOrientation, setSelectedOrientation] = useState('landscape'); // landscape | portrait
+  const [selectedSize, setSelectedSize] = useState('1024x768');
+  // 比例-分辨率映射
+  const ratioSizeMap = {
+    '1:1': ['512x512', '1024x1024'],
+    '4:3': ['768x576', '1024x768', '1536x1152'],
+    '3:4': ['576x768', '768x1024', '1152x1536'],
+    '16:9': ['1024x576', '1792x1024'],
+    '9:16': ['576x1024', '1024x1792']
+  };
   // 文字生图
   const [textPrompt, setTextPrompt] = useState('');
   const [textGenLoading, setTextGenLoading] = useState(false);
@@ -471,6 +483,7 @@ function App() {
       fd.append('text', textPrompt.trim());
       fd.append('similar', String(true));
       fd.append('num_images', '9');
+      fd.append('size', selectedSize);
       if (selectedStyleName) {
         const tpl = promptTemplates.find(t => t.name === selectedStyleName);
         if (tpl) {
@@ -578,6 +591,7 @@ function App() {
         const fd = new FormData();
         fd.append('file_id', fileId);
         fd.append('custom_prompt', customPromptText.trim());
+        fd.append('size', selectedSize);
         const res = await fetch(`${API_BASE}/api/generate/custom-prompt`, {
           method: 'POST',
           body: fd
@@ -625,6 +639,7 @@ function App() {
       const fd = new FormData();
       fd.append('file_id', fileId);
       fd.append('num_images', String(numImages));
+      fd.append('size', selectedSize);
       if (selectedStyleName) {
         const tpl = promptTemplates.find(p => p.name === selectedStyleName);
         if (tpl) {
@@ -1167,6 +1182,45 @@ function App() {
   }, "\u62D6\u62FD\u56FE\u7247\u5230\u6B64\u5904\uFF0C\u6216\u70B9\u51FB\u9009\u62E9"), /*#__PURE__*/React.createElement("p", {
     className: "text-slate-600 text-xs mt-2"
   }, "JPG / PNG")))), /*#__PURE__*/React.createElement("div", {
+    className: "flex-shrink-0 w-full px-4 pt-3",
+    style: {
+      background: '#080b12'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "w-full max-w-4xl"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-1.5"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-1"
+  }, ['1:1', '4:3', '16:9'].map(r => /*#__PURE__*/React.createElement("button", {
+    key: r,
+    onClick: () => {
+      setSelectedRatio(r);
+      setSelectedSize(ratioSizeMap[r][0]);
+    },
+    className: `px-2 py-0.5 rounded text-[10px] font-medium transition-all border ${selectedRatio === r ? 'bg-blue-500/20 text-blue-300 border-blue-500/40' : 'bg-slate-800/40 text-slate-500 border-slate-700/40 hover:border-slate-600'}`
+  }, r))), selectedRatio === '4:3' && /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-1"
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      setSelectedOrientation('landscape');
+      setSelectedSize('1024x768');
+    },
+    className: `px-1.5 py-0.5 rounded text-[10px] transition-all border ${selectedOrientation === 'landscape' ? 'bg-blue-500/20 text-blue-300 border-blue-500/40' : 'bg-slate-800/40 text-slate-500 border-slate-700/40 hover:border-slate-600'}`
+  }, "\u6A2A"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      setSelectedOrientation('portrait');
+      setSelectedSize('768x1024');
+    },
+    className: `px-1.5 py-0.5 rounded text-[10px] transition-all border ${selectedOrientation === 'portrait' ? 'bg-blue-500/20 text-blue-300 border-blue-500/40' : 'bg-slate-800/40 text-slate-500 border-slate-700/40 hover:border-slate-600'}`
+  }, "\u7AD6")), /*#__PURE__*/React.createElement("select", {
+    value: selectedSize,
+    onChange: e => setSelectedSize(e.target.value),
+    className: "w-[110px] px-2 py-0.5 rounded text-[10px] bg-slate-800/60 border border-slate-700/50 text-slate-300 outline-none focus:border-blue-500/40 transition-all shrink-0"
+  }, ratioSizeMap[selectedRatio].map(s => /*#__PURE__*/React.createElement("option", {
+    key: s,
+    value: s
+  }, s)))))), /*#__PURE__*/React.createElement("div", {
     className: "flex-shrink-0 w-full flex items-center justify-center",
     style: {
       paddingBottom: 'env(safe-area-inset-bottom)',
@@ -1349,6 +1403,13 @@ function App() {
     setCustomPromptText: setCustomPromptText,
     genLoading: genLoading,
     result: result,
+    selectedRatio: selectedRatio,
+    setSelectedRatio: setSelectedRatio,
+    selectedOrientation: selectedOrientation,
+    setSelectedOrientation: setSelectedOrientation,
+    selectedSize: selectedSize,
+    setSelectedSize: setSelectedSize,
+    ratioSizeMap: ratioSizeMap,
     onGenerate: () => {
       if (!result) {
         alert("请先导入并分析图片");
@@ -1450,7 +1511,14 @@ function AiGenPanel({
   onSavePrompt,
   onDeletePrompt,
   onClose,
-  textModelEnabled
+  textModelEnabled,
+  selectedRatio,
+  setSelectedRatio,
+  selectedOrientation,
+  setSelectedOrientation,
+  selectedSize,
+  setSelectedSize,
+  ratioSizeMap
 }) {
   const promptList = (prompts || []).filter(p => (p.type || 'prompt') === 'prompt');
   const styleList = (prompts || []).filter(p => (p.type || 'prompt') === 'style');
@@ -1853,6 +1921,44 @@ function AiGenPanel({
     strokeWidth: 2,
     d: "M12 4v16m8-8H4"
   })), "\u6682\u65E0\u5168\u5C40\u98CE\u683C\uFF0C\u70B9\u51FB\u521B\u5EFA")), /*#__PURE__*/React.createElement("div", {
+    className: "h-px bg-gradient-to-r from-transparent via-slate-700/40 to-transparent mx-6"
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "px-6 py-4"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-[11px] font-medium text-slate-400 mb-3 block"
+  }, "\u6BD4\u4F8B\u548C\u5206\u8FA8\u7387"), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-3 flex-wrap"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-1.5"
+  }, ['1:1', '4:3', '16:9'].map(r => /*#__PURE__*/React.createElement("button", {
+    key: r,
+    onClick: () => {
+      setSelectedRatio(r);
+      setSelectedSize(ratioSizeMap[r][0]);
+    },
+    className: `px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all border active:scale-95 ${selectedRatio === r ? 'bg-blue-500/20 text-blue-300 border-blue-500/40' : 'bg-slate-800/60 text-slate-400 border-slate-700/50 hover:border-slate-600'}`
+  }, r))), selectedRatio === '4:3' && /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-1.5"
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      setSelectedOrientation('landscape');
+      setSelectedSize('1024x768');
+    },
+    className: `px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all border active:scale-95 ${selectedOrientation === 'landscape' ? 'bg-blue-500/20 text-blue-300 border-blue-500/40' : 'bg-slate-800/60 text-slate-400 border-slate-700/50 hover:border-slate-600'}`
+  }, "\u6A2A"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      setSelectedOrientation('portrait');
+      setSelectedSize('768x1024');
+    },
+    className: `px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all border active:scale-95 ${selectedOrientation === 'portrait' ? 'bg-blue-500/20 text-blue-300 border-blue-500/40' : 'bg-slate-800/60 text-slate-400 border-slate-700/50 hover:border-slate-600'}`
+  }, "\u7AD6")), /*#__PURE__*/React.createElement("select", {
+    value: selectedSize,
+    onChange: e => setSelectedSize(e.target.value),
+    className: "w-[130px] px-2.5 py-1.5 rounded-lg text-[11px] bg-slate-800/60 border border-slate-700/50 text-slate-200 outline-none focus:border-blue-500/40 transition-all shrink-0"
+  }, ratioSizeMap[selectedRatio].map(s => /*#__PURE__*/React.createElement("option", {
+    key: s,
+    value: s
+  }, s))))), /*#__PURE__*/React.createElement("div", {
     className: "h-px bg-gradient-to-r from-transparent via-slate-700/40 to-transparent mx-6"
   }), /*#__PURE__*/React.createElement("div", {
     className: "px-6 py-4"

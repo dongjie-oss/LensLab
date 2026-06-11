@@ -40,6 +40,14 @@ function AdminPanel({
   const [imgTestMsg, setImgTestMsg] = useState('');
   const [imgTested, setImgTested] = useState(false);
 
+  // 系统
+  const [sysEnabled, setSysEnabled] = useState(true);
+  const [sysThreshold, setSysThreshold] = useState(300);
+  const [sysCurrentMb, setSysCurrentMb] = useState(0);
+  const [sysSaveMsg, setSysSaveMsg] = useState('');
+  const [sysCleaning, setSysCleaning] = useState(false);
+  const [sysCleanMsg, setSysCleanMsg] = useState('');
+
   // 版本
   const [currentVer, setCurrentVer] = useState('...');
   const [latestVer, setLatestVer] = useState(null);
@@ -408,6 +416,61 @@ function AdminPanel({
     }
   };
 
+  // ---- 系统（自动清理） ----
+  const loadCleanupConfig = async () => {
+    try {
+      const res = await apiCall('/api/settings/cleanup');
+      if (res.ok) {
+        const data = await res.json();
+        setSysEnabled(data.enabled !== false);
+        setSysThreshold(data.threshold_mb || 300);
+        setSysCurrentMb(data.current_mb || 0);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+  const saveCleanupConfig = async () => {
+    setSysSaveMsg('');
+    try {
+      const res = await apiCall('/api/settings/cleanup', {
+        method: 'POST',
+        body: JSON.stringify({
+          enabled: sysEnabled,
+          threshold_mb: sysThreshold
+        })
+      });
+      if (res.ok) {
+        setSysSaveMsg('已保存');
+        setTimeout(() => setSysSaveMsg(''), 2000);
+      } else {
+        setSysSaveMsg('保存失败');
+      }
+    } catch (e) {
+      setSysSaveMsg('网络错误: ' + e.message);
+    }
+  };
+  const doManualCleanup = async () => {
+    if (!confirm('确定要清空 AI 生成的临时图片吗？已保存到历史的图片不受影响。')) return;
+    setSysCleaning(true);
+    try {
+      const res = await apiCall('/api/cleanup/manual', {
+        method: 'POST'
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const mb = (data.freed_bytes / (1024 * 1024)).toFixed(1);
+        setSysCleanMsg(`已清理 ${data.removed_files} 个文件（约 ${mb} MB）`);
+        setSysCurrentMb(0);
+        setTimeout(() => setSysCleanMsg(''), 4000);
+      }
+    } catch (e) {
+      setSysCleanMsg('清理失败: ' + e.message);
+    } finally {
+      setSysCleaning(false);
+    }
+  };
+
   // ---- 版本 ----
   const loadVersions = async () => {
     setVerStatus('loading');
@@ -446,6 +509,7 @@ function AdminPanel({
         loadAiConfig();
         loadImgConfig();
       }
+      if (activeTab === 'system') loadCleanupConfig();
       if (activeTab === 'version') loadVersions();
     }
   }, [activeTab, loggedIn]);
@@ -594,11 +658,11 @@ function AdminPanel({
     d: "M6 18L18 6M6 6l12 12"
   }))))), /*#__PURE__*/React.createElement("div", {
     className: "flex border-b border-slate-800"
-  }, ['ai', 'account', 'version'].map(t => /*#__PURE__*/React.createElement("button", {
+  }, ['ai', 'account', 'system', 'version'].map(t => /*#__PURE__*/React.createElement("button", {
     key: t,
     onClick: () => setActiveTab(t),
     className: 'flex-1 py-3 text-xs font-medium transition-colors ' + (activeTab === t ? 'text-blue-400 border-b-2 border-blue-400' : 'text-slate-500 hover:text-slate-300')
-  }, t === 'ai' ? 'AI 模型' : t === 'account' ? '账号' : '版本'))), /*#__PURE__*/React.createElement("div", {
+  }, t === 'ai' ? 'AI 模型' : t === 'account' ? '账号' : t === 'system' ? '系统' : '版本'))), /*#__PURE__*/React.createElement("div", {
     className: "p-5 overflow-y-auto",
     style: {
       maxHeight: '60vh'
@@ -723,7 +787,66 @@ function AdminPanel({
   })), /*#__PURE__*/React.createElement("button", {
     onClick: changePassword,
     className: "w-full py-2 bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-600 transition-all"
-  }, "\u66F4\u65B0\u5BC6\u7801")))), activeTab === 'version' && /*#__PURE__*/React.createElement("div", {
+  }, "\u66F4\u65B0\u5BC6\u7801")))), activeTab === 'system' && /*#__PURE__*/React.createElement("div", {
+    className: "space-y-5"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "bg-slate-800/30 rounded-xl p-4 border border-slate-700/50"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "text-[10px] text-slate-500 uppercase tracking-wider mb-2"
+  }, "AI \u751F\u6210\u4E34\u65F6\u6587\u4EF6\u5939"), /*#__PURE__*/React.createElement("div", {
+    className: "text-2xl font-bold text-white mono"
+  }, sysCurrentMb, " MB"), /*#__PURE__*/React.createElement("div", {
+    className: "text-[10px] text-slate-500 mt-1"
+  }, "\u4F4D\u4E8E data/generated/\uFF0C\u4EC5\u5B58\u653E\u672A\u4FDD\u5B58\u5230\u5386\u53F2\u7684\u4E34\u65F6\u56FE\u7247")), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between"
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "text-sm text-slate-300"
+  }, "\u81EA\u52A8\u6E05\u7406"), /*#__PURE__*/React.createElement("div", {
+    className: "text-[10px] text-slate-500 mt-0.5"
+  }, "AI \u751F\u56FE\u540E\u81EA\u52A8\u68C0\u67E5\u5E76\u6E05\u7406\u65E7\u6587\u4EF6")), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setSysEnabled(v => !v),
+    className: 'relative w-11 h-6 rounded-full transition-all ' + (sysEnabled ? 'bg-blue-500' : 'bg-slate-600')
+  }, /*#__PURE__*/React.createElement("span", {
+    className: 'absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ' + (sysEnabled ? 'left-5' : 'left-0.5')
+  }))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between mb-2"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-sm text-slate-300"
+  }, "\u6E05\u7406\u9608\u503C"), /*#__PURE__*/React.createElement("span", {
+    className: "text-xs text-slate-400"
+  }, sysThreshold, " MB")), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-3"
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "50",
+    max: "10000",
+    step: "50",
+    value: sysThreshold,
+    onChange: e => setSysThreshold(parseInt(e.target.value)),
+    className: "flex-1 accent-blue-500"
+  }), /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    min: "50",
+    max: "10000",
+    step: "50",
+    value: sysThreshold,
+    onChange: e => setSysThreshold(Math.max(50, Math.min(10000, parseInt(e.target.value) || 300))),
+    className: "w-20 px-2 py-1.5 bg-slate-800 border border-slate-700 rounded text-sm text-white text-center font-mono outline-none focus:border-blue-500"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "text-[10px] text-slate-500 mt-1"
+  }, "\u8D85\u8FC7\u6B64\u503C\u540E\u81EA\u52A8\u6E05\u7406\uFF0C\u76EE\u6807\u6E05\u7406\u5230\u9608\u503C\u7684 80%")), sysSaveMsg && /*#__PURE__*/React.createElement("p", {
+    className: 'text-xs ' + (sysSaveMsg.startsWith('已保存') ? 'text-green-400' : 'text-red-400')
+  }, sysSaveMsg), /*#__PURE__*/React.createElement("div", {
+    className: "pt-2"
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: doManualCleanup,
+    disabled: sysCleaning,
+    className: "w-full py-2 bg-red-500/20 border border-red-500/40 text-red-400 rounded-lg text-sm font-medium hover:bg-red-500/30 transition-all disabled:opacity-40"
+  }, sysCleaning ? '清理中...' : '🗑️ 手动清空 AI 生成图片'), /*#__PURE__*/React.createElement("div", {
+    className: "text-[10px] text-slate-500 mt-2"
+  }, "\u6E05\u7A7A\u540E\uFF0C\u5DF2\u4FDD\u5B58\u5230\u5386\u53F2\u7684\u56FE\u7247\u4E0D\u53D7\u5F71\u54CD\uFF0C\u672A\u4FDD\u5B58\u7684\u4E34\u65F6\u56FE\u7247\u5C06\u4E0D\u53EF\u89C1")), sysCleanMsg && /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-green-400"
+  }, sysCleanMsg)), activeTab === 'version' && /*#__PURE__*/React.createElement("div", {
     className: "space-y-4"
   }, /*#__PURE__*/React.createElement("div", {
     className: "bg-slate-800/30 rounded-xl p-4 border border-slate-700/50"

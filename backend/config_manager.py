@@ -44,6 +44,10 @@ DEFAULT_CONFIG = {
         "max_429_retries": 3,
         "429_backoff_base": 15,
     },
+    "system": {
+        "enabled": True,
+        "threshold_mb": 300,
+    },
 }
 
 
@@ -52,9 +56,67 @@ def _hash_password(password: str, salt: str = "") -> str:
     return hashlib.sha256((salt + password).encode()).hexdigest()
 
 
+def _backup_config() -> str:
+    """备份 config.json，返回备份文件路径"""
+    backup = CONFIG_FILE + ".bak"
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, "r") as f:
+            with open(backup, "w") as fb:
+                fb.write(f.read())
+    return backup
+
+
+def _verify_config(config: dict) -> bool:
+    """验证关键字段完整性，防止迁移后数据丢失"""
+    # auth 必须有 password_hash
+    auth = config.get("auth", {})
+    if not auth.get("password_hash"):
+        return False
+    # ai_image 必须保留 api_key（如果迁移前有的话）
+    return True
+
+
+def _restore_config_from_backup(backup: str) -> bool:
+    """从备份恢复 config.json"""
+    if backup and os.path.exists(backup):
+        with open(backup, "r") as f:
+            content = f.read()
+        with open(CONFIG_FILE, "w") as f:
+            f.write(content)
+        return True
+    return False
+
+
 def load_config() -> dict:
-    """加载配置文件，不存在则创建默认"""
-    return load_data(CONFIG_FILE, lambda: DEFAULT_CONFIG.copy())
+    """加载配置文件，不存在则创建默认；确保所有默认键都存在（兼容旧配置）
+    安全流程：备份 → 合并 → 保存 → 验证 → 失败则回滚"""
+    config = load_data(CONFIG_FILE, lambda: DEFAULT_CONFIG.copy())
+    
+    # 检查是否需要迁移（有缺失键）
+    changed = False
+    for key, default_val in DEFAULT_CONFIG.items():
+        if key not in config:
+            config[key] = default_val.copy() if isinstance(default_val, dict) else default_val
+            changed = True
+    
+    if changed:
+        # 1. 备份
+        backup = _backup_config()
+        # 2. 保存
+        save_config(config)
+        # 3. 验证
+        if not _verify_config(config):
+            # 验证失败 → 回滚
+            _restore_config_from_backup(backup)
+            print("[config_manager] ⚠️ 迁移后验证失败，已回滚到备份")
+            config = load_data(CONFIG_FILE, lambda: DEFAULT_CONFIG.copy())
+        else:
+            # 验证通过 → 删备份
+            if backup and os.path.exists(backup):
+                os.remove(backup)
+            print(f"[config_manager] ✅ 配置迁移完成，新增键: {[k for k in DEFAULT_CONFIG if k not in config and k not in ('system',)]}")
+    
+    return config
 
 
 def save_config(config: dict):

@@ -245,6 +245,71 @@ class AIConfigRequest(BaseModel):
     model: Optional[str] = None
     enabled: Optional[bool] = None
 
+class SystemCleanupConfig(BaseModel):
+    enabled: bool = True
+    threshold_mb: int = 300
+
+
+# ==================== 自动生成/清理工具 ====================
+
+import subprocess as _sp
+
+def _get_generated_size() -> int:
+    """获取 generated/ 目录大小（字节）"""
+    generated_dir = DATA_DIR / "generated"
+    if not generated_dir.exists():
+        return 0
+    try:
+        result = _sp.run(["du", "-sb", str(generated_dir)], capture_output=True, text=True, timeout=5)
+        return int(result.stdout.split()[0])
+    except Exception:
+        return sum(f.stat().st_size for f in generated_dir.iterdir() if f.is_file())
+
+def _auto_cleanup_generated():
+    """AI 生图完成后检查 generated/ 大小，超过阈值自动清理旧文件，删到阈值*80%"""
+    config = load_config()
+    sys_cfg = config.get("system", {})
+    if not sys_cfg.get("enabled", True):
+        return
+    threshold_mb = sys_cfg.get("threshold_mb", 300)
+    threshold_bytes = threshold_mb * 1024 * 1024
+    total = _get_generated_size()
+    if total <= threshold_bytes:
+        return
+    target = int(threshold_bytes * 0.8)
+    generated_dir = DATA_DIR / "generated"
+    files = sorted(
+        [f for f in generated_dir.iterdir() if f.is_file()],
+        key=lambda f: f.stat().st_mtime
+    )
+    removed = 0
+    for f in files:
+        if total <= target:
+            break
+        sz = f.stat().st_size
+        try:
+            f.unlink()
+            total -= sz
+            removed += 1
+        except Exception:
+            pass
+    logger.info(f"[AutoCleanup] 已清理 {removed} 个文件，释放约 {removed} 个文件")
+
+def _manual_cleanup_all() -> dict:
+    """手动清空 generated/，返回清理前信息"""
+    generated_dir = DATA_DIR / "generated"
+    before = _get_generated_size()
+    count = 0
+    if generated_dir.exists():
+        for f in generated_dir.iterdir():
+            if f.is_file():
+                try:
+                    f.unlink()
+                    count += 1
+                except Exception:
+                    pass
+    return {"freed_bytes": before, "removed_files": count}
+
 
 # ==================== 认证 API ====================
 
@@ -452,6 +517,40 @@ def test_img_ai_connection(req: AIConfigRequest, authorization: Optional[str] = 
         return {"ok": False, "message": "网络不可达，请检查接口地址"}
     except Exception as e:
         return {"ok": False, "message": f"连接失败: {str(e)[:200]}"}
+
+
+# ==================== 系统设置 API ====================
+
+@app.get("/api/settings/cleanup")
+def get_cleanup_settings(authorization: Optional[str] = Header(None)):
+    """获取自动清理配置，同时返回当前 generated/ 大小"""
+    _require_auth(authorization)
+    config = load_config()
+    sys_cfg = config.get("system", {})
+    return {
+        "enabled": sys_cfg.get("enabled", True),
+        "threshold_mb": sys_cfg.get("threshold_mb", 300),
+        "current_mb": _get_generated_size() // (1024 * 1024),
+    }
+
+@app.post("/api/settings/cleanup")
+def update_cleanup_settings(req: SystemCleanupConfig, authorization: Optional[str] = Header(None)):
+    """更新自动清理配置"""
+    _require_auth(authorization)
+    config = load_config()
+    config["system"] = {
+        "enabled": req.enabled,
+        "threshold_mb": max(50, min(10000, req.threshold_mb)),
+    }
+    save_config(config)
+    return {"ok": True}
+
+@app.post("/api/cleanup/manual")
+def manual_cleanup(authorization: Optional[str] = Header(None)):
+    """手动清空 generated/"""
+    _require_auth(authorization)
+    result = _manual_cleanup_all()
+    return {"ok": True, **result}
 
 
 # ==================== 原有 API ====================
@@ -859,7 +958,7 @@ except ImportError:
 
 
 @app.post("/api/generate/similar")
-async def generate_similar(file_id: str = Form(...), global_style: str = Form(None), custom_prompts_json: str = Form(None), similar: str = Form("false"), num_images: str = Form("9")):
+async def generate_similar(file_id: str = Form(...), global_style: str = Form(None), custom_prompts_json: str = Form(None), similar: str = Form("false"), num_images: str = Form("9"), size: str = Form("1024x1024")):
     """AI 生成类似风格图片，支持全局风格 + 自定义提示词"""
     try:
         prompts_list = []
@@ -877,8 +976,9 @@ async def generate_similar(file_id: str = Form(...), global_style: str = Form(No
         sim = similar.lower() in ('true', '1', 'yes')
         n = int(num_images) if num_images else 9
         n = max(1, min(n, 9))
-        print(f"[DEBUG] generate/similar called: similar={sim}, num_images={n}, global_style={global_style_data}, prompts={len(prompts_list)}")
-        task_id = start_generation(file_id, mode="style", custom_prompts=prompts_list, similar=sim, global_style=global_style_data, num_images=n)
+        print(f"[DEBUG] generate/similar called: similar={sim}, num_images={n}, global_style={global_style_data}, prompts={len(prompts_list)}, size={size}")
+        _auto_cleanup_generated()
+        task_id = start_generation(file_id, mode="style", custom_prompts=prompts_list, similar=sim, global_style=global_style_data, num_images=n, size=size)
         return {"ok": True, "task_id": task_id}
     except Exception as e:
         logger.error(f"Failed to start generation: {e}")
@@ -886,13 +986,13 @@ async def generate_similar(file_id: str = Form(...), global_style: str = Form(No
 
 
 @app.post("/api/generate/custom-prompt")
-async def generate_custom_prompt(file_id: str = Form(...), custom_prompt: str = Form(...)):
+async def generate_custom_prompt(file_id: str = Form(...), custom_prompt: str = Form(...), size: str = Form("1024x1024")):
     """AI 生成：基于原图 + 用户自定义提示词，只生成1张占满3×3九宫格"""
     try:
         if not custom_prompt or not custom_prompt.strip():
             return {"ok": False, "error": "自定义提示词不能为空"}
         custom_prompts_list = [{"name": "自定义提示词", "content": custom_prompt.strip()}]
-        task_id = start_generation(file_id, mode="style", custom_prompts=custom_prompts_list, similar=False, global_style=None, num_images=1)
+        task_id = start_generation(file_id, mode="style", custom_prompts=custom_prompts_list, similar=False, global_style=None, num_images=1, size=size)
         return {"ok": True, "task_id": task_id}
     except Exception as e:
         logger.error(f"Failed to start custom-prompt generation: {e}")
@@ -906,6 +1006,7 @@ async def generate_text_image(
     custom_prompts_json: str = Form(None),
     similar: str = Form("false"),
     num_images: str = Form("9"),
+    size: str = Form("1024x1024"),
 ):
     """纯文字生图：无需上传，输入文字描述直接生成九宫格"""
     try:
@@ -929,7 +1030,7 @@ async def generate_text_image(
         task_id = start_text_generation(
             text=text.strip(), mode="text",
             custom_prompts=prompts_list, similar=sim,
-            global_style=gs, num_images=n,
+            global_style=gs, num_images=n, size=size,
         )
         return {"ok": True, "task_id": task_id}
     except Exception as e:

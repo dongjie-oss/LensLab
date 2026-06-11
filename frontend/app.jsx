@@ -253,6 +253,18 @@ function App() {
   const [similarImages, setSimilarImages] = useState(false);
   const [customPromptEnabled, setCustomPromptEnabled] = useState(false);
   const [customPromptText, setCustomPromptText] = useState('');
+  // 比例和分辨率选择
+  const [selectedRatio, setSelectedRatio] = useState('4:3');
+  const [selectedOrientation, setSelectedOrientation] = useState('landscape'); // landscape | portrait
+  const [selectedSize, setSelectedSize] = useState('1024x768');
+  // 比例-分辨率映射
+  const ratioSizeMap = {
+    '1:1': ['512x512', '1024x1024'],
+    '4:3': ['768x576', '1024x768', '1536x1152'],
+    '3:4': ['576x768', '768x1024', '1152x1536'],
+    '16:9': ['1024x576', '1792x1024'],
+    '9:16': ['576x1024', '1024x1792'],
+  };
   // 文字生图
   const [textPrompt, setTextPrompt] = useState('');
   const [textGenLoading, setTextGenLoading] = useState(false);
@@ -434,6 +446,7 @@ function App() {
       fd.append('text', textPrompt.trim());
       fd.append('similar', String(true));
       fd.append('num_images', '9');
+      fd.append('size', selectedSize);
       if (selectedStyleName) {
         const tpl = promptTemplates.find(t => t.name === selectedStyleName);
         if (tpl) {
@@ -526,6 +539,7 @@ function App() {
         const fd = new FormData();
         fd.append('file_id', fileId);
         fd.append('custom_prompt', customPromptText.trim());
+        fd.append('size', selectedSize);
         const res = await fetch(`${API_BASE}/api/generate/custom-prompt`, { method: 'POST', body: fd });
         const data = await res.json();
         if (data.ok && data.task_id) {
@@ -570,6 +584,7 @@ function App() {
       const fd = new FormData();
       fd.append('file_id', fileId);
       fd.append('num_images', String(numImages));
+      fd.append('size', selectedSize);
       if (selectedStyleName) {
         const tpl = promptTemplates.find(p => p.name === selectedStyleName);
         if (tpl) {
@@ -1059,6 +1074,66 @@ function App() {
                 )}
               </div>
 
+              {/* 比例和分辨率 - 文生图快捷面板 */}
+              <div className="flex-shrink-0 w-full px-4 pt-3" style={{ background: '#080b12' }}>
+                <div className="w-full max-w-4xl">
+                  {/* 比例 + 方向 + 分辨率 — 单行排列 */}
+                  <div className="flex items-center gap-1.5">
+                    {/* 比例 */}
+                    <div className="flex gap-1">
+                      {['1:1', '4:3', '16:9'].map(r => (
+                        <button
+                          key={r}
+                          onClick={() => { setSelectedRatio(r); setSelectedSize(ratioSizeMap[r][0]); }}
+                          className={`px-2 py-0.5 rounded text-[10px] font-medium transition-all border ${
+                            selectedRatio === r
+                              ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+                              : 'bg-slate-800/40 text-slate-500 border-slate-700/40 hover:border-slate-600'
+                          }`}
+                        >
+                          {r}
+                        </button>
+                      ))}
+                    </div>
+                    {/* 横竖方向（仅4:3） */}
+                    {selectedRatio === '4:3' && (
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => { setSelectedOrientation('landscape'); setSelectedSize('1024x768'); }}
+                          className={`px-1.5 py-0.5 rounded text-[10px] transition-all border ${
+                            selectedOrientation === 'landscape'
+                              ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+                              : 'bg-slate-800/40 text-slate-500 border-slate-700/40 hover:border-slate-600'
+                          }`}
+                        >
+                          横
+                        </button>
+                        <button
+                          onClick={() => { setSelectedOrientation('portrait'); setSelectedSize('768x1024'); }}
+                          className={`px-1.5 py-0.5 rounded text-[10px] transition-all border ${
+                            selectedOrientation === 'portrait'
+                              ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+                              : 'bg-slate-800/40 text-slate-500 border-slate-700/40 hover:border-slate-600'
+                          }`}
+                        >
+                          竖
+                        </button>
+                      </div>
+                    )}
+                    {/* 分辨率下拉 - 固定宽度 */}
+                    <select
+                      value={selectedSize}
+                      onChange={e => setSelectedSize(e.target.value)}
+                      className="w-[110px] px-2 py-0.5 rounded text-[10px] bg-slate-800/60 border border-slate-700/50 text-slate-300 outline-none focus:border-blue-500/40 transition-all shrink-0"
+                    >
+                      {ratioSizeMap[selectedRatio].map(s => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
               {/* 文字输入框 - 始终在下方 */}
               <div className="flex-shrink-0 w-full flex items-center justify-center" style={{ paddingBottom: 'env(safe-area-inset-bottom)', background: '#080b12' }}>
                 <div className="w-full max-w-4xl">
@@ -1240,6 +1315,10 @@ function App() {
         customPromptText={customPromptText} setCustomPromptText={setCustomPromptText}
         genLoading={genLoading}
         result={result}
+        selectedRatio={selectedRatio} setSelectedRatio={setSelectedRatio}
+        selectedOrientation={selectedOrientation} setSelectedOrientation={setSelectedOrientation}
+        selectedSize={selectedSize} setSelectedSize={setSelectedSize}
+        ratioSizeMap={ratioSizeMap}
         onGenerate={() => {
           if (!result) { alert("请先导入并分析图片"); return; }
           const fid = result.file_id;
@@ -1292,7 +1371,7 @@ function ExposureAdvice({ result }) {
 
 // AI 生图设置面板
 // AI 生图设置面板（内嵌模板管理）
-function AiGenPanel({ prompts, customPrompts, setCustomPrompts, selectedPromptNames, setSelectedPromptNames, selectedStyleName, setSelectedStyleName, similarImages, setSimilarImages, customPromptEnabled, setCustomPromptEnabled, customPromptText, setCustomPromptText, genLoading, onGenerate, result, onRefreshPrompts, onSavePrompt, onDeletePrompt, onClose, textModelEnabled }) {
+function AiGenPanel({ prompts, customPrompts, setCustomPrompts, selectedPromptNames, setSelectedPromptNames, selectedStyleName, setSelectedStyleName, similarImages, setSimilarImages, customPromptEnabled, setCustomPromptEnabled, customPromptText, setCustomPromptText, genLoading, onGenerate, result, onRefreshPrompts, onSavePrompt, onDeletePrompt, onClose, textModelEnabled, selectedRatio, setSelectedRatio, selectedOrientation, setSelectedOrientation, selectedSize, setSelectedSize, ratioSizeMap }) {
   const promptList = (prompts || []).filter(p => (p.type || 'prompt') === 'prompt');
   const styleList = (prompts || []).filter(p => (p.type || 'prompt') === 'style');
 
@@ -1581,6 +1660,65 @@ function AiGenPanel({ prompts, customPrompts, setCustomPrompts, selectedPromptNa
                 暂无全局风格，点击创建
               </button>
             )}
+          </div>
+          <div className="h-px bg-gradient-to-r from-transparent via-slate-700/40 to-transparent mx-6" />
+
+          {/* 比例和分辨率选择 — 单行排列 */}
+          <div className="px-6 py-4">
+            <span className="text-[11px] font-medium text-slate-400 mb-3 block">比例和分辨率</span>
+            <div className="flex items-center gap-3 flex-wrap">
+              {/* 比例 */}
+              <div className="flex gap-1.5">
+                {['1:1', '4:3', '16:9'].map(r => (
+                  <button
+                    key={r}
+                    onClick={() => { setSelectedRatio(r); setSelectedSize(ratioSizeMap[r][0]); }}
+                    className={`px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all border active:scale-95 ${
+                      selectedRatio === r
+                        ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+                        : 'bg-slate-800/60 text-slate-400 border-slate-700/50 hover:border-slate-600'
+                    }`}
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+              {/* 方向（仅4:3） */}
+              {selectedRatio === '4:3' && (
+                <div className="flex gap-1.5">
+                  <button
+                    onClick={() => { setSelectedOrientation('landscape'); setSelectedSize('1024x768'); }}
+                    className={`px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all border active:scale-95 ${
+                      selectedOrientation === 'landscape'
+                        ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+                        : 'bg-slate-800/60 text-slate-400 border-slate-700/50 hover:border-slate-600'
+                    }`}
+                  >
+                    横
+                  </button>
+                  <button
+                    onClick={() => { setSelectedOrientation('portrait'); setSelectedSize('768x1024'); }}
+                    className={`px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all border active:scale-95 ${
+                      selectedOrientation === 'portrait'
+                        ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+                        : 'bg-slate-800/60 text-slate-400 border-slate-700/50 hover:border-slate-600'
+                    }`}
+                  >
+                    竖
+                  </button>
+                </div>
+              )}
+              {/* 分辨率下拉 - 固定宽度 */}
+              <select
+                value={selectedSize}
+                onChange={e => setSelectedSize(e.target.value)}
+                className="w-[130px] px-2.5 py-1.5 rounded-lg text-[11px] bg-slate-800/60 border border-slate-700/50 text-slate-200 outline-none focus:border-blue-500/40 transition-all shrink-0"
+              >
+                {ratioSizeMap[selectedRatio].map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
           </div>
           <div className="h-px bg-gradient-to-r from-transparent via-slate-700/40 to-transparent mx-6" />
 

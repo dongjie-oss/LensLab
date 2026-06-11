@@ -342,15 +342,16 @@ def _add_default_similar_prompts(style_prompts, cp_content, cp_name):
     logger.info(f"降级方案 → {cp_name} + similar → 9 completely different images")
 
 
-def _generate_one(api_key: str, base_url: str, model: str, prompt: str, image_path: Optional[Path] = None) -> Optional[bytes]:
+def _generate_one(api_key: str, base_url: str, model: str, prompt: str, image_path: Optional[Path] = None, size: str = "1024x1024") -> Optional[bytes]:
     """生成单张图片（图生图：传原图 base64 给 extra_body.image）"""
     try:
+        logger.info(f"[_generate_one] size={size}, model={model}, has_image={image_path is not None and image_path.exists()}")
         url = f"{base_url}/images/generations"
         payload = {
             "model": model,
             "prompt": prompt,
             "n": 1,
-            "size": "1024x1024",
+            "size": size,
             "extra_body": {
                 "response_format": "url",
             },
@@ -421,7 +422,7 @@ def _save_generated_image(img_bytes: bytes, task_id: str, index: int) -> str:
     return f"/generated/{filename}"
 
 
-def start_generation(file_id: str, mode: str = "style", custom_prompts: list = None, similar: bool = False, global_style: dict = None, num_images: int = 9) -> str:
+def start_generation(file_id: str, mode: str = "style", custom_prompts: list = None, similar: bool = False, global_style: dict = None, num_images: int = 9, size: str = "1024x1024") -> str:
     """启动图片生成任务"""
     task_id = str(uuid.uuid4())[:12]
     with _lock:
@@ -435,7 +436,7 @@ def start_generation(file_id: str, mode: str = "style", custom_prompts: list = N
             "cancelled": False,
         }
     thread = threading.Thread(
-        target=_run_generation, args=(task_id, file_id, mode), kwargs={"custom_prompts": custom_prompts, "similar": similar, "global_style": global_style, "num_images": num_images}, daemon=True
+        target=_run_generation, args=(task_id, file_id, mode), kwargs={"custom_prompts": custom_prompts, "similar": similar, "global_style": global_style, "num_images": num_images, "size": size}, daemon=True
     )
     thread.start()
     return task_id
@@ -458,7 +459,7 @@ def _is_cancelled(task_id: str) -> bool:
         return task_id in _cancelled
 
 
-def _run_generation(task_id: str, file_id: str, mode: str, custom_prompts: list = None, similar: bool = False, global_style: dict = None, num_images: int = 9):
+def _run_generation(task_id: str, file_id: str, mode: str, custom_prompts: list = None, similar: bool = False, global_style: dict = None, num_images: int = 9, size: str = "1024x1024"):
     """后台执行图片生成"""
     try:
         cfg = _get_cfg()
@@ -687,7 +688,7 @@ def _run_generation(task_id: str, file_id: str, mode: str, custom_prompts: list 
             mode = 'img2img' if gen_image_path else 'text2img'
             logger.info(f"Generating image {i+1}/{total_items} for task {task_id} [{label}] ({mode})")
             t0 = time.time()
-            img_bytes = _generate_one(api_key, base_url, model, prompt, gen_image_path)
+            img_bytes = _generate_one(api_key, base_url, model, prompt, gen_image_path, size=size)
             elapsed = time.time() - t0
             if img_bytes:
                 url = _save_generated_image(img_bytes, task_id, i)
@@ -766,7 +767,7 @@ def cleanup_old_tasks():
             del _tasks[k]
     with _cancel_lock:
         _cancelled.clear()
-def start_text_generation(text: str, mode: str = "text", custom_prompts: list = None, similar: bool = False, global_style: dict = None, num_images: int = 9) -> str:
+def start_text_generation(text: str, mode: str = "text", custom_prompts: list = None, similar: bool = False, global_style: dict = None, num_images: int = 9, size: str = "1024x1024") -> str:
     """启动纯文字生图任务"""
     task_id = str(uuid.uuid4())[:12]
     with _lock:
@@ -781,14 +782,14 @@ def start_text_generation(text: str, mode: str = "text", custom_prompts: list = 
         }
     thread = threading.Thread(
         target=_run_text_generation, args=(task_id, text),
-        kwargs={"custom_prompts": custom_prompts, "similar": similar, "global_style": global_style, "num_images": num_images},
+        kwargs={"custom_prompts": custom_prompts, "similar": similar, "global_style": global_style, "num_images": num_images, "size": size},
         daemon=True,
     )
     thread.start()
     return task_id
 
 
-def _run_text_generation(task_id: str, user_text: str, custom_prompts: list = None, similar: bool = False, global_style: dict = None, num_images: int = 9):
+def _run_text_generation(task_id: str, user_text: str, custom_prompts: list = None, similar: bool = False, global_style: dict = None, num_images: int = 9, size: str = "1024x1024"):
     """纯文字生图：根据文本描述生成 N 张风格各异的图片（不与原图关联）"""
     try:
         cfg = _get_cfg()
@@ -889,7 +890,7 @@ def _run_text_generation(task_id: str, user_text: str, custom_prompts: list = No
                 return None
             logger.info(f"Gen {i+1}/{total_items} [{label}]")
             t0 = time.time()
-            img_bytes = _generate_one(api_key, base_url, model, prompt, None)
+            img_bytes = _generate_one(api_key, base_url, model, prompt, None, size=size)
             if img_bytes:
                 url = _save_generated_image(img_bytes, task_id, i)
                 logger.info(f"  done [{label}] ({time.time()-t0:.0f}s)")
