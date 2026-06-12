@@ -156,8 +156,8 @@ def _analyze_image_content(image_path: Path) -> str:
         return "一张照片"
 
 
-def _call_llm_describe(api_key: str, base_url: str, model: str, image_path: Path) -> str:
-    """调用文字 AI 的 vision 能力描述图片内容，返回详细中文描述"""
+def _call_llm_describe(api_key: str, base_url: str, model: str, image_path: Path) -> dict:
+    """调用文字 AI 的 vision 能力描述图片内容，返回 {scene, content_type}"""
     try:
         # 编码图片为 base64
         img = Image.open(image_path)
@@ -183,7 +183,7 @@ def _call_llm_describe(api_key: str, base_url: str, model: str, image_path: Path
                     "content": [
                         {
                             "type": "text",
-                            "text": "请用不超过50字的中文概括这张照片的拍摄场景类型和氛围特点，只需要说明场景（如：城市街景/室内客厅/海边沙滩/公园草地等）和氛围（如：阴天/日落/明亮/昏暗等），绝对不要描述照片中的人物外貌、具体物体名称或细节。例如：\n\n正确的描述：一个阴天下的城市街头，路面湿滑，远处有模糊的行人剪影。\n错误的描述：一个穿着红色外套的女人在雨中走着。\n请用正确的格式输出。"
+                            "text": "请用JSON格式输出这张照片的分析结果：\n{\"scene\": \"场景类型和氛围描述（50字内）\", \"content_type\": \"portrait/scene/object\"}\n- portrait: 画面主体为人像/人物\n- scene: 画面主体为风景/街景/建筑等环境\n- object: 画面主体为产品/食物/静物等\n只输出JSON，不要任何额外文字。"
                         },
                         {
                             "type": "image_url",
@@ -205,20 +205,33 @@ def _call_llm_describe(api_key: str, base_url: str, model: str, image_path: Path
             data = json.loads(resp.read().decode("utf-8"))
 
         if "choices" in data and len(data["choices"]) > 0:
-            desc = data["choices"][0]["message"]["content"]
-            logger.info(f"AI describe: {desc[:120]}")
-            return desc.strip()
-        return "一张照片"
+            raw = data["choices"][0]["message"]["content"].strip()
+            logger.info(f"AI describe raw: {raw[:120]}")
+            # 尝试 JSON 解析
+            try:
+                # 兼容 LLM 可能包裹在 ```json ... ``` 中
+                cleaned = raw
+                if cleaned.startswith("```"):
+                    cleaned = cleaned.split("\n", 1)[-1].rsplit("```", 1)[0]
+                result = json.loads(cleaned)
+                if "scene" in result:
+                    result.setdefault("content_type", "scene")
+                    return result
+            except (json.JSONDecodeError, TypeError):
+                pass
+            # 降级：把原始文本当 scene，content_type 默认 scene
+            return {"scene": raw, "content_type": "scene"}
+        return {"scene": "一张照片", "content_type": "scene"}
     except Exception as e:
         logger.warning(f"Failed to describe image via LLM: {e}")
-        return "一张照片"
+        return {"scene": "一张照片", "content_type": "scene"}
 
 
 
-def _call_llm_generate_prompts(api_key: str, base_url: str, model: str, image_path: Path, num_images: int = 9) -> list[dict]:
+def _call_llm_generate_prompts(api_key: str, base_url: str, model: str, image_path: Path, num_images: int = 9, content_type: str = "scene") -> list[dict]:
     """调用文本模型生成多个创意提示词
     每个提示词包含：场景、主体、角度、风格
-    要求：环境类似，人物动作形态各异
+    根据 content_type 使用不同的生成策略
     """
     try:
         # 读取图片并编码
@@ -234,15 +247,42 @@ def _call_llm_generate_prompts(api_key: str, base_url: str, model: str, image_pa
         base = base_url.rstrip('/')
         url = base + '/chat/completions' if base.endswith('/v1') else base + '/v1/chat/completions'
 
-        # 构建提示词：让文本模型根据原图生成 num_images 个创意
-        prompt_content = f"""基于以下图片内容，生成{num_images}个完全不同的创意场景描述。
+        # 根据 content_type 选择不同的提示词模板
+        if content_type == "portrait":
+            prompt_content = f"""基于以下图片内容，生成{num_images}个完全不同的创意场景描述。
+要求：
+1. 每个画面的人物必须完全不同——年龄、性别、发型、服装、表情、姿态都要不同
+2. 可以是不同风格的写真、街拍、时尚大片、艺术肖像
+3. 每个场景需包含：场景描述、人物描述（含外貌特征）、拍摄角度
+4. 风格多样化，涵盖不同艺术风格
+5. 保持高质量摄影/绘画风格
+请严格按以下JSON格式返回，不要有任何额外文字：
+[
+    {{"scene": "场景描述", "subject": "人物描述（含年龄/性别/服装/姿态）", "angle": "拍摄角度", "style": "风格描述"}},
+    ...共{num_images}个对象
+]"""
+        elif content_type == "object":
+            prompt_content = f"""基于以下图片内容，生成{num_images}个完全不同的创意场景描述。
+要求：
+1. 每个场景保持与原图类似的总体环境氛围
+2. 主体（产品/食物/静物）和展示方式必须完全不同
+3. 每个场景需包含：场景描述、主体描述、拍摄角度
+4. 风格多样化，涵盖不同艺术风格
+5. 保持高质量摄影/绘画风格
+请严格按以下JSON格式返回，不要有任何额外文字：
+[
+    {{"scene": "场景描述", "subject": "主体描述", "angle": "拍摄角度", "style": "风格描述"}},
+    ...共{num_images}个对象
+]"""
+        else:  # scene (default)
+            prompt_content = f"""基于以下图片内容，生成{num_images}个完全不同的创意场景描述。
 要求：
 1. 每个场景保持与原图类似的总体环境氛围
 2. 人物和动作必须完全不同
 3. 每个场景需包含：场景描述、主体描述、拍摄角度
 4. 风格多样化，涵盖不同艺术风格
 5. 保持高质量摄影/绘画风格
-
+禁止描述人物外貌。
 请严格按以下JSON格式返回，不要有任何额外文字：
 [
     {{"scene": "场景描述", "subject": "主体描述", "angle": "拍摄角度", "style": "风格描述"}},
@@ -504,29 +544,43 @@ def _run_generation(task_id: str, file_id: str, mode: str, custom_prompts: list 
 
         if text_available:
             # 并行：describe + generate_prompts 两个 LLM 调用
+            # describe 返回 dict {scene, content_type}
+            # generate_prompts 接收 content_type 参数
+            content_type = "scene"  # default before describe returns
             with ThreadPoolExecutor(max_workers=2) as llm_executor:
                 # describe future
                 describe_future = llm_executor.submit(
                     _call_llm_describe, text_api_key, text_base_url, text_model, image_path
                 )
-                # generate_prompts future
+                # generate_prompts future — initially with default content_type; will re-submit if needed
                 prompts_future = llm_executor.submit(
-                    _call_llm_generate_prompts, text_api_key, text_base_url, text_model, image_path
+                    _call_llm_generate_prompts, text_api_key, text_base_url, text_model, image_path, num_images, "scene"
                 )
                 try:
-                    content_desc = describe_future.result(timeout=60)
-                    if content_desc and content_desc != "一张照片":
-                        logger.info(f"AI vision describe: {content_desc[:120]}")
+                    desc_result = describe_future.result(timeout=60)
+                    if desc_result and desc_result.get("scene") and desc_result.get("scene") != "一张照片":
+                        content_desc = desc_result.get("scene")
+                        content_type = desc_result.get("content_type", "scene")
+                        logger.info(f"AI vision describe: scene={content_desc[:120]}, content_type={content_type}")
+                        # If content_type differs from initial guess, re-generate prompts
+                        if content_type != "scene":
+                            logger.info(f"Re-generating prompts with content_type={content_type}")
+                            try:
+                                creative_prompts = _call_llm_generate_prompts(text_api_key, text_base_url, text_model, image_path, num_images, content_type)
+                            except Exception as e2:
+                                logger.warning(f"Re-generate prompts failed: {e2}")
                     else:
                         content_desc = None
                 except Exception as e:
                     logger.warning(f"LLM describe failed: {e}")
-                try:
-                    creative_prompts = prompts_future.result(timeout=60)
-                    if creative_prompts:
-                        logger.info(f"LLM generated {len(creative_prompts)} creative prompts")
-                except Exception as e:
-                    logger.warning(f"LLM generate_prompts failed: {e}")
+                # Only use initial prompts future if content_type stayed as "scene"
+                if content_type == "scene" and creative_prompts is None:
+                    try:
+                        creative_prompts = prompts_future.result(timeout=60)
+                        if creative_prompts:
+                            logger.info(f"LLM generated {len(creative_prompts)} creative prompts")
+                    except Exception as e:
+                        logger.warning(f"LLM generate_prompts failed: {e}")
 
         if not content_desc:
             content_desc = _analyze_image_content(image_path)
@@ -549,6 +603,22 @@ def _run_generation(task_id: str, file_id: str, mode: str, custom_prompts: list 
             {"prompt": "影棚布光，锐利细节，精致质感，高端质感。", "label": "高清质感"},
             {"prompt": "户外自然光，色彩丰富，令人惊叹的视野，获奖摄影级别。", "label": "户外风光"},
         ]
+
+        # 人像专用风格
+        portrait_styles = [
+            {"prompt": "复古胶片质感，自然光线，街拍风格，温暖色调。", "label": "复古街拍"},
+            {"prompt": "日系清新风格，柔和光线，干净背景，文艺气息。", "label": "日系清新"},
+            {"prompt": "时尚杂志封面，专业布光，高级感，大片质感。", "label": "时尚杂志"},
+            {"prompt": "黑白人像，强烈光影对比，情绪表达，经典质感。", "label": "黑白质感"},
+            {"prompt": "暖色调写真，金色时刻光线，柔和肤色，浪漫氛围。", "label": "暖调写真"},
+            {"prompt": "冷艳大片，冷色调，高对比度，时尚前卫。", "label": "冷艳大片"},
+            {"prompt": "电影感人像，戏剧性布光，故事感，叙事氛围。", "label": "电影感人像"},
+            {"prompt": "自然纪实风格，抓拍瞬间，真实表情，环境人像。", "label": "自然纪实"},
+            {"prompt": "创意光影，彩色玻璃/霓虹灯效果，艺术肖像，独特氛围。", "label": "创意光影"},
+        ]
+
+        # 根据内容类型选择默认风格集
+        fallback_styles = portrait_styles if content_type == "portrait" else default_styles
 
         style_prompts = []
 
@@ -608,7 +678,7 @@ def _run_generation(task_id: str, file_id: str, mode: str, custom_prompts: list 
                             angle = creative.get("angle", "平视")
                             prompt = f"请创作第{user_prompt_count + i + 1}张高质量图片：场景：{scene}。主体：{subject}。角度：{angle}。风格：{style_text}。画面丰富、构图精美，不要使用真实人物照片。"
                         else:
-                            prompt = f"请创作高质量图片：场景为{default_styles[(user_prompt_count + i) % len(default_styles)]['prompt']}。风格：{style_text}。画面丰富、构图精美，不要使用真实人物照片。"
+                            prompt = f"请创作高质量图片：场景为{fallback_styles[(user_prompt_count + i) % len(fallback_styles)]['prompt']}。风格：{style_text}。画面丰富、构图精美，不要使用真实人物照片。"
                         style_prompts.append({"prompt": prompt, "label": f"{style_name}·无限想象{user_prompt_count + i + 1}"})
                 else:
                     # No global style: random style + unlimited imagination
@@ -621,7 +691,7 @@ def _run_generation(task_id: str, file_id: str, mode: str, custom_prompts: list 
                             style = creative.get("style", "高质量摄影风格")
                             prompt = f"请创作第{user_prompt_count + i + 1}张高质量图片：场景：{scene}。主体：{subject}。角度：{angle}。风格：{style}。画面丰富、构图精美，不要使用真实人物照片。"
                         else:
-                            ds = default_styles[(user_prompt_count + i) % len(default_styles)]
+                            ds = fallback_styles[(user_prompt_count + i) % len(fallback_styles)]
                             prompt = f"请创作高质量图片：场景为{ds['prompt']}。风格：{ds['prompt']}。画面丰富、构图精美，不要使用真实人物照片。"
                         style_prompts.append({"prompt": prompt, "label": f"无限想象{user_prompt_count + i + 1}"})
             
@@ -663,10 +733,10 @@ def _run_generation(task_id: str, file_id: str, mode: str, custom_prompts: list 
 
         elif not global_style and not custom_prompts:
             # 什么都不选(无相似) → 9张不同默认风格
-            for ds in default_styles:
+            for ds in fallback_styles:
                 prompt = f"基于以下照片内容重新创作高质量图片：{content_desc}。风格：{ds['prompt']}"
                 style_prompts.append({"prompt": prompt, "label": ds["label"]})
-            logger.info(f"默认模式 → 9 different default styles")
+            logger.info(f"默认模式 → 9 different default styles (content_type={content_type})")
 
 
 
@@ -693,10 +763,10 @@ def _run_generation(task_id: str, file_id: str, mode: str, custom_prompts: list 
             if img_bytes:
                 url = _save_generated_image(img_bytes, task_id, i)
                 logger.info(f"Image {i+1} done: {label} - {url} ({elapsed:.0f}s)")
-                return {"index": i, "url": url, "status": "done", "label": label}
+                return {"index": i, "url": url, "status": "done", "label": label, "prompt": prompt}
             else:
                 logger.warning(f"Image {i+1} failed: {label} ({elapsed:.0f}s)")
-                return {"index": i, "url": None, "status": "failed", "label": label}
+                return {"index": i, "url": None, "status": "failed", "label": label, "prompt": prompt}
 
         # 低并发 + 请求间隔控制，避免触发 429 频率限制
         with ThreadPoolExecutor(max_workers=max_conc) as executor:
@@ -812,7 +882,7 @@ def _run_text_generation(task_id: str, user_text: str, custom_prompts: list = No
         text_api_key = text_cfg.get("api_key", "")
         text_base_url = text_cfg.get("base_url", "")
         text_model = text_cfg.get("model", "")
-        text_available = bool(text_api_key and text_model and text_base_url and text_model != "agnes-2.0-flash")
+        text_available = bool(text_api_key and text_model and text_base_url)
 
         style_prompts = []
 
@@ -894,9 +964,9 @@ def _run_text_generation(task_id: str, user_text: str, custom_prompts: list = No
             if img_bytes:
                 url = _save_generated_image(img_bytes, task_id, i)
                 logger.info(f"  done [{label}] ({time.time()-t0:.0f}s)")
-                return {"index": i, "url": url, "status": "done", "label": label}
+                return {"index": i, "url": url, "status": "done", "label": label, "prompt": prompt}
             logger.warning(f"  failed [{label}] ({time.time()-t0:.0f}s)")
-            return {"index": i, "url": None, "status": "failed", "label": label}
+            return {"index": i, "url": None, "status": "failed", "label": label, "prompt": prompt}
 
         # 低并发 + 请求间隔控制，避免触发 429 频率限制
         with ThreadPoolExecutor(max_workers=max_conc) as executor:

@@ -42,15 +42,24 @@ jobs:
       - name: Generate version tag
         id: tag
         run: |
-          if [[ "${GITHUB_REF}" =~ ^refs/tags/v ]]; then
-            VERSION="${GITHUB_REF#refs/tags/}"
-          else
-            VERSION="latest"
-          fi
-          # 读取 backend/__version__.py 中的版本号
-          PY_VERSION=$(grep -oP '"\K[0-9]+\.[0-9]+\.[0-9]+' backend/__version__.py 2>/dev/null || echo "1.0.1")
-          echo "image_tag=${VERSION}" >> $GITHUB_OUTPUT
+          # 读取代码版本（用于构建参数）
+          PY_VERSION=$(grep -oP '"\K[0-9]+\.[0-9]+\.[0-9]+' backend/__version__.py 2>/dev/null || echo "0.0.0")
           echo "python_version=${PY_VERSION}" >> $GITHUB_OUTPUT
+          if [[ "${GITHUB_REF}" =~ ^refs/tags/v ]]; then
+            # git tag "v1.0.2" → 保留 "v1.0.2"
+            TAG="${GITHUB_REF#refs/tags/}"
+          elif [[ -n "${{ github.event.inputs.version }}" ]]; then
+            RAW="${{ github.event.inputs.version }}"
+            # 没有 v 前缀则补上
+            if [[ "$RAW" =~ ^v ]]; then
+              TAG="$RAW"
+            else
+              TAG="v$RAW"
+            fi
+          else
+            TAG="latest"
+          fi
+          echo "tag_version=${TAG}" >> $GITHUB_OUTPUT
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -58,9 +67,8 @@ jobs:
           context: .
           push: true
           tags: |
-            ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.image_tag }}
-            ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.python_version }}
             ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}
+            ${{ env.ACR_REGISTRY }}/${{ env.ACR_NAMESPACE }}/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag_version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |

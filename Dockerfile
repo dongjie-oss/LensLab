@@ -4,7 +4,7 @@
 # 目标：从 2.4GB 压到 ~300-500MB
 # =============================================
 
-ARG BUILD_VERSION=1.0.2
+ARG BUILD_VERSION=1.0.3
 
 # ---- Stage 1: 前端编译 ----
 FROM node:20-alpine AS frontend-builder
@@ -32,7 +32,7 @@ RUN python -m venv /install/venv && \
 # ---- Stage 3: 运行时（精简镜像）----
 FROM python:3.11-slim
 
-ARG BUILD_VERSION=1.0.2
+ARG BUILD_VERSION=1.0.3
 
 WORKDIR /app
 

@@ -347,6 +347,7 @@ function App() {
   useEffect(() => {
     if (activeFileId && !loading) {
       const doReanalyze = async () => {
+        setResult(null);
         setLoading(true);
         const fd = new FormData();
         fd.append('file_id', activeFileId);
@@ -991,7 +992,10 @@ function App() {
   }, "\u533A\u57DF\u6A21\u5F0F"), /*#__PURE__*/React.createElement(ModeSelector, {
     modes: modes,
     current: mode,
-    onChange: setMode,
+    onChange: m => {
+      setResult(null);
+      setMode(m);
+    },
     disabled: isTextGenMode
   })), /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-3"
@@ -1323,7 +1327,7 @@ function App() {
     onAddToHistory: handleAddToHistory
   }))))), /*#__PURE__*/React.createElement("div", {
     style: {
-      display: isTextGenMode ? "none" : "flex"
+      display: !isTextGenMode && mode ? "flex" : "none"
     },
     className: "w-72 bg-[#0d1117] border-l border-slate-800 flex flex-col overflow-hidden"
   }, /*#__PURE__*/React.createElement("div", {
@@ -2264,14 +2268,27 @@ function AiGenGrid({
     className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm",
     onClick: closePreview
   }, /*#__PURE__*/React.createElement("div", {
-    className: "relative max-w-[80vw] max-h-[85vh] rounded-2xl overflow-hidden animate-[fadeIn_0.2s_ease-out]",
-    onClick: e => e.stopPropagation()
+    className: "flex gap-4 p-4 rounded-2xl overflow-hidden animate-[fadeIn_0.2s_ease-out]",
+    onClick: e => e.stopPropagation(),
+    style: {
+      background: 'rgba(15,23,42,0.95)',
+      maxWidth: '95vw',
+      maxHeight: '90vh'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: 'relative',
+      flexShrink: 0
+    }
   }, /*#__PURE__*/React.createElement("img", {
     src: previewImg.url,
     alt: `生成图 ${previewImg.index + 1}`,
-    className: "max-w-full max-h-[75vh] object-contain rounded-t-2xl"
+    className: "max-h-[80vh] w-auto object-contain rounded-xl",
+    style: {
+      maxWidth: '70vw'
+    }
   }), /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center justify-between px-5 py-3 bg-slate-900/95 backdrop-blur-md border-t border-slate-800/60"
+    className: "flex items-center justify-between px-5 py-3 bg-slate-900/95 backdrop-blur-md border-t border-slate-800/60 rounded-b-xl"
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-xs text-slate-400 font-mono"
   }, "#", previewImg.index + 1, " / ", displayCount), /*#__PURE__*/React.createElement("div", {
@@ -2293,10 +2310,10 @@ function AiGenGrid({
     onClick: addToHistory,
     disabled: addingToHistory || addedToHistory,
     className: `flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium
-                      active:scale-95 transition-all duration-200
-                      ${addedToHistory ? 'bg-emerald-600/80 text-emerald-100 cursor-default' : 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white shadow-lg shadow-emerald-500/25'}
-                      ${addingToHistory ? 'opacity-70 cursor-wait' : ''}
-                    `
+                        active:scale-95 transition-all duration-200
+                        ${addedToHistory ? 'bg-emerald-600/80 text-emerald-100 cursor-default' : 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white shadow-lg shadow-emerald-500/25'}
+                        ${addingToHistory ? 'opacity-70 cursor-wait' : ''}
+                      `
   }, addedToHistory ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("svg", {
     className: "w-3.5 h-3.5",
     fill: "none",
@@ -2345,7 +2362,42 @@ function AiGenGrid({
     strokeLinejoin: "round",
     strokeWidth: 2,
     d: "M6 18L18 6M6 6l12 12"
-  }))))))));
+  })))))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      minWidth: '200px',
+      maxWidth: '280px',
+      alignSelf: 'stretch',
+      background: 'rgba(30,41,59,0.9)',
+      borderRadius: '12px',
+      padding: '16px',
+      border: '1px solid rgba(100,116,139,0.2)',
+      overflowY: 'auto'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: '11px',
+      color: '#64748b',
+      marginBottom: '8px',
+      textTransform: 'uppercase',
+      letterSpacing: '0.05em',
+      fontWeight: 600
+    }
+  }, "\u63D0\u793A\u8BCD"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: '#94a3b8',
+      fontSize: '13px',
+      lineHeight: '1.7',
+      wordBreak: 'break-word'
+    }
+  }, images[previewImg.index]?.prompt || '无提示词信息'), images[previewImg.index]?.label && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: '10px',
+      color: '#475569',
+      marginTop: '12px',
+      borderTop: '1px solid rgba(100,116,139,0.15)',
+      paddingTop: '8px'
+    }
+  }, "\u6807\u7B7E\uFF1A", images[previewImg.index].label)))));
 }
 
 // AI 智能建议（手动触发）
