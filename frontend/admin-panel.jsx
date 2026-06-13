@@ -417,25 +417,25 @@ function AdminPanel({ onClose }) {
   // ---- 版本 ----
   const loadVersions = async () => {
     setVerStatus('loading'); setVerErr(''); setVerPage(1); // Bug 修复：重置页码
+    // 独立获取本地版本，避免因单个请求失败导致无法检查更新
     try {
       const res = await apiCall('/api/versions');
       if (res.ok) {
         const data = await res.json();
-        // current 可能是对象或字符串
         const cv = data.current;
         setCurrentVer(typeof cv === 'object' ? (cv.version || '...') : (cv || '...'));
         setChangelog(data.changelog || []);
       }
+    } catch (e) {
+      setVerErr(e.message);
+    }
+    // 检查更新（优先 GitHub，失败回退 ACR）
+    try {
       const checkRes = await apiCall('/api/versions/check');
       if (checkRes.ok) {
         const data = await checkRes.json();
-        setLatestVer(data);
-        // 如果没有 update_available 字段，根据 has_local_record 判断
-        if (data.update_available) {
-          setVerStatus('available');
-        } else {
-          setVerStatus('latest');
-        }
+        setLatestVer(data.latest || data);
+        setVerStatus(data.update_available ? 'available' : data.is_dev ? 'dev' : 'latest');
       } else {
         setVerStatus('latest');
       }
@@ -691,24 +691,41 @@ function AdminPanel({ onClose }) {
               {sysCleanMsg && <p className="text-xs text-green-400">{sysCleanMsg}</p>}
             </div>
           )}
-          {activeTab === 'version' && (
-            <div className="space-y-4">
-              <div className="bg-slate-800/30 rounded-xl p-4 border border-slate-700/50">
-                <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">当前版本</div>
-                <div className="text-xl font-bold mono text-white">v{currentVer}</div>
-              </div>
-              {verStatus === 'loading' && (
-                <div className="rounded-xl p-3 text-xs text-slate-400 bg-slate-800/20">检查更新中...</div>
-              )}
-              {verStatus === 'latest' && (
-                <div className="rounded-xl p-3 text-xs text-green-400 bg-green-500/10 border border-green-500/20">✓ 已是最新版本</div>
-              )}
-              {verStatus === 'available' && latestVer && (
-                <div className="rounded-xl p-3 text-xs text-yellow-400 bg-yellow-500/10 border border-yellow-500/20">
-                  ⚠ 发现新版本 v{latestVer.latest_version || latestVer.version || '?'}，请执行升级命令
-                </div>
-              )}
-              {changelog.length > 0 && (
+              {activeTab === 'version' && (
+                <div className="space-y-4">
+                  <div className="bg-slate-800/30 rounded-xl p-4 border border-slate-700/50">
+                    <div className="flex items-center justify-between mb-2">
+                      <div>
+                        <div className="text-[10px] text-slate-500 uppercase tracking-wider">当前版本</div>
+                        <div className="text-xl font-bold mono text-white">v{currentVer}</div>
+                      </div>
+                      <button
+                        onClick={loadVersions}
+                        disabled={verStatus === 'loading'}
+                        className="text-xs bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-slate-200 px-3 py-1.5 rounded-lg transition-colors"
+                      >
+                        {verStatus === 'loading' ? '检查中...' : '检查更新'}
+                      </button>
+                    </div>
+                    {verErr && <div className="text-xs text-red-400 mb-2">{verErr}</div>}
+                    {verStatus === 'loading' && (
+                      <div className="rounded-xl p-3 text-xs text-slate-400 bg-slate-800/20">检查更新中...</div>
+                    )}
+                    {verStatus === 'latest' && (
+                      <div className="rounded-xl p-3 text-xs text-green-400 bg-green-500/10 border border-green-500/20">✓ 已是最新版本</div>
+                    )}
+                    {verStatus === 'available' && latestVer && (
+                      <div className="rounded-xl p-3 text-xs text-yellow-400 bg-yellow-500/10 border border-yellow-500/20">
+                        ⚠ 发现新版本 v{latestVer.version}，请执行升级命令
+                      </div>
+                    )}
+                    {verStatus === 'dev' && (
+                      <div className="rounded-xl p-3 text-xs text-blue-400 bg-blue-500/10 border border-blue-500/20">
+                        ⚙️ 当前版本为开发版本（v{currentVer}），尚未公开
+                      </div>
+                    )}
+                  </div>
+                  {changelog.length > 0 && (
                 <div>
                   <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">更新日志</div>
                   <div className="space-y-2">

@@ -39,3 +39,8 @@ node_modules/
 
 # Temporary/auxiliary files
 frontend/app_new.jsx
+*.bak
+frontend/assets/*.bak
+frontend/index.html.*.mobilebak
+exposure-lab-v1.0.3/
+*.mobilebak

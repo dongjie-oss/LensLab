@@ -1,5 +1,18 @@
 const { useState, useRef, useEffect, useCallback } = React;
 
+// --- 移动端检测 Hook ---
+function useIsMobile(breakpoint = 768) {
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= breakpoint);
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${breakpoint}px)`);
+    const handler = (e) => setIsMobile(e.matches);
+    mq.addEventListener('change', handler);
+    setIsMobile(mq.matches);
+    return () => mq.removeEventListener('change', handler);
+  }, [breakpoint]);
+  return isMobile;
+}
+
 // 全局动画样式（注入一次）
 if (!document.getElementById('ai-gen-styles')) {
   const style = document.createElement('style');
@@ -136,12 +149,14 @@ function Histogram({ data }) {
 
 // 区域模式选择器
 function ModeSelector({ modes, current, onChange, disabled }) {
+  const isMobile = useIsMobile();
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap gap-2" style={isMobile ? { gap: 4, flexWrap: 'nowrap' } : {}}>
       {modes.map(m => (
         <button
           key={m.key}
           onClick={() => { if (!disabled) onChange(current === m.key ? null : m.key); }}
+          style={isMobile ? { padding: '4px 8px', fontSize: 10 } : {}}
           className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
             disabled
               ? 'bg-slate-800/30 text-slate-600 border border-slate-700/30 cursor-not-allowed'
@@ -151,7 +166,7 @@ function ModeSelector({ modes, current, onChange, disabled }) {
           }`}
         >
           {m.name}
-          <span className="ml-1 text-xs opacity-60">{m.rows}×{m.cols}</span>
+          {isMobile ? null : <span className="ml-1 text-xs opacity-60">{m.rows}×{m.cols}</span>}
         </button>
       ))}
     </div>
@@ -211,6 +226,8 @@ function HistoryItem({ item, onSelect, onDelete, active, multiSelect, isSelected
 
 // 主应用
 function App() {
+  const isMobile = useIsMobile();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null);
   const [result, setResult] = useState(null);
@@ -793,9 +810,9 @@ function App() {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-screen overflow-hidden" style={{ position: 'relative' }}>
       {/* 左侧栏 - 文件管理 */}
-      <div className="w-64 bg-[#0d1117] border-r border-slate-800 flex flex-col">
+      <div className="w-64 bg-[#0d1117] border-r border-slate-800 flex flex-col" style={isMobile ? { position: 'fixed', top: 0, left: 0, height: '100%', zIndex: 40, transform: sidebarOpen ? 'translateX(0)' : 'translateX(-100%)', transition: 'transform 0.3s ease', boxShadow: sidebarOpen ? '4px 0 24px rgba(0,0,0,0.5)' : 'none', width: 280 } : {}}>
         {/* Logo */}
         <div className="p-4 border-b border-slate-800">
           <h1 className="text-lg font-bold text-white tracking-tight">
@@ -916,15 +933,26 @@ function App() {
         </div>
       </div>
 
+      {/* 手机端侧栏遮罩 */}
+      {isMobile && sidebarOpen && (
+        <div onClick={() => setSidebarOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 35 }} />
+      )}
+
       {/* 主区域 */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden" style={isMobile ? { width: '100%', minWidth: 0 } : {}}>
         {/* 顶部工具栏 */}
-        <div className="h-14 bg-[#0d1117] border-b border-slate-800 flex items-center justify-between px-6">
-          <div className="flex items-center gap-4">
+        <div className="h-14 bg-[#0d1117] border-b border-slate-800 flex items-center justify-between px-6" style={isMobile ? { padding: '0 12px' } : {}}>
+          <div className="flex items-center gap-4" style={isMobile ? { gap: 8 } : {}}>
+            {isMobile && (
+              <button onClick={() => setSidebarOpen(true)} style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', flexShrink: 0, cursor: 'pointer', color: '#94a3b8' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+              </button>
+            )}
             <span className="text-xs text-slate-500">区域模式</span>
             <ModeSelector modes={modes} current={mode} onChange={(m) => { setResult(null); setMode(m); }} disabled={isTextGenMode} />
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3" style={isMobile ? { gap: 6, flexWrap: 'nowrap', overflow: 'auto' } : {}}>
+            {!isMobile && (
             <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer">
               <input
                 type="checkbox"
@@ -934,12 +962,14 @@ function App() {
               />
               显示测光点
             </label>
+            )}
             {/* AI 操作按钮 */}
             {aiEnabled && (
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => { if (!isTextGenMode) aiAdviceRef.current?.(); }}
                   disabled={isTextGenMode}
+                  title="AI 分析"
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all duration-200 ${
                     isTextGenMode
                       ? 'bg-slate-800/30 border-slate-700/30 text-slate-600 cursor-not-allowed'
@@ -949,7 +979,7 @@ function App() {
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
                   </svg>
-                  AI 分析
+                  <span className={isMobile ? 'hidden' : ''}>AI 分析</span>
                 </button>
                 {aiImageEnabled && (
                 <button
@@ -980,7 +1010,7 @@ function App() {
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                   </svg>
-                  AI 文生图
+                  <span className={isMobile ? 'hidden' : ''}>AI 文生图</span>
                 </button>
                 )}
                 {genLoading && (
@@ -1230,7 +1260,7 @@ function App() {
       </div>
 
       {/* 右侧栏 - 分析结果 */}
-      <div style={{ display: (!isTextGenMode && mode) ? "flex" : "none" }} className="w-72 bg-[#0d1117] border-l border-slate-800 flex flex-col overflow-hidden">
+      <div style={{ display: (!isTextGenMode && mode && !isMobile) ? "flex" : "none" }} className="w-72 bg-[#0d1117] border-l border-slate-800 flex flex-col overflow-hidden">
         <div className="p-4 border-b border-slate-800">
           <h2 className="text-sm font-semibold text-slate-300">分析结果</h2>
         </div>
@@ -1373,6 +1403,7 @@ function ExposureAdvice({ result }) {
 // AI 生图设置面板
 // AI 生图设置面板（内嵌模板管理）
 function AiGenPanel({ prompts, customPrompts, setCustomPrompts, selectedPromptNames, setSelectedPromptNames, selectedStyleName, setSelectedStyleName, similarImages, setSimilarImages, customPromptEnabled, setCustomPromptEnabled, customPromptText, setCustomPromptText, genLoading, onGenerate, result, onRefreshPrompts, onSavePrompt, onDeletePrompt, onClose, textModelEnabled, selectedRatio, setSelectedRatio, selectedOrientation, setSelectedOrientation, selectedSize, setSelectedSize, ratioSizeMap }) {
+  const isMobile = useIsMobile();
   const promptList = (prompts || []).filter(p => (p.type || 'prompt') === 'prompt');
   const styleList = (prompts || []).filter(p => (p.type || 'prompt') === 'style');
 
@@ -1382,6 +1413,8 @@ function AiGenPanel({ prompts, customPrompts, setCustomPrompts, selectedPromptNa
   const [editContent, setEditContent] = React.useState('');
   const [editId, setEditId] = React.useState(null);
   const [isCreating, setIsCreating] = React.useState(false);
+  // 手机端模板 Tab 切换：'prompt' | 'style'
+  const [mobileTemplateTab, setMobileTemplateTab] = React.useState('prompt');
 
   const togglePrompt = (p) => {
     if (selectedPromptNames.includes(p.name)) {
@@ -1435,9 +1468,13 @@ function AiGenPanel({ prompts, customPrompts, setCustomPrompts, selectedPromptNa
 
   // ==================== 管理视图 ====================
   if (manageTab) {
+    const mgmtContainerStyle = isMobile
+      ? { width: '100%', height: '100%', borderRadius: 0 }
+      : { width: 520, minWidth: 360, maxWidth: '95vw', maxHeight: '85vh' };
+    const mgmtTitleStyle = isMobile ? { paddingTop: 'env(safe-area-inset-top, 0px)' } : {};
     return ReactDOM.createPortal(
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" tabIndex={-1} onClick={preventClose}>
-        <div className="w-[520px] min-w-[360px] max-w-[95vw] max-h-[85vh] rounded-2xl overflow-hidden bg-slate-900 border border-slate-700/50 shadow-2xl shadow-black/50 flex flex-col" onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" style={isMobile ? { justifyContent: 'stretch', alignItems: 'stretch' } : {}} tabIndex={-1} onClick={preventClose}>
+        <div className="w-[520px] min-w-[360px] max-w-[95vw] max-h-[85vh] rounded-2xl overflow-hidden bg-slate-900 border border-slate-700/50 shadow-2xl shadow-black/50 flex flex-col" style={mgmtContainerStyle} onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
           {/* 标题栏 */}
           <div className="flex items-center justify-between px-5 py-3 border-b border-slate-800/60">
             <div className="flex items-center gap-3">
@@ -1535,14 +1572,17 @@ function AiGenPanel({ prompts, customPrompts, setCustomPrompts, selectedPromptNa
   }
 
   // ==================== 选择视图 ====================
+  const outerStyle = isMobile
+    ? { justifyContent: 'stretch', alignItems: 'stretch', padding: 0 }
+    : { justifyContent: 'center', alignItems: 'center' };
   return ReactDOM.createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" tabIndex={-1} onClick={preventClose}>
-      <div className="relative w-[520px] max-w-[95vw] rounded-2xl overflow-hidden bg-slate-900 border border-slate-700/50 shadow-2xl shadow-black/50" onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" style={outerStyle} tabIndex={-1} onClick={preventClose}>
+      <div className="relative w-[520px] max-w-[95vw] bg-slate-900 border border-slate-700/50 shadow-2xl shadow-black/50 flex flex-col" style={isMobile ? { width: '100%', height: '100%', borderRadius: 0, maxWidth: '100%' } : { borderRadius: '1rem', overflow: 'hidden' }} onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
         <div className="absolute -top-24 -right-24 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-24 -left-24 w-40 h-40 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="relative z-10">
+        <div className="relative z-10 flex flex-col" style={{ minHeight: 0 }}>
           {/* 标题栏 */}
-          <div className="flex items-center justify-between px-6 pt-5 pb-3">
+          <div className="flex-shrink-0 flex items-center justify-between px-6 pt-5 pb-3" style={isMobile ? { paddingTop: 'max(20px, env(safe-area-inset-top, 12px))' } : {}}>
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-emerald-500/25">
                 <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/></svg>
@@ -1556,10 +1596,35 @@ function AiGenPanel({ prompts, customPrompts, setCustomPrompts, selectedPromptNa
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
           </div>
-          <div className="h-px bg-gradient-to-r from-transparent via-slate-700/60 to-transparent mx-6" />
+          <div className="flex-shrink-0 h-px bg-gradient-to-r from-transparent via-slate-700/60 to-transparent mx-6" />
 
-          {/* 提示词选择区 */}
-          <div className={`px-6 pt-4 pb-3 transition-all duration-300 ${customPromptEnabled ? 'opacity-30 pointer-events-none' : ''}`}>
+          {/* 手机端：模板 Tab 切换 */}
+          {isMobile && (
+            <div className="flex-shrink-0 px-4 pt-2">
+              <div className="flex bg-slate-800/60 rounded-lg p-0.5">
+                <button onClick={() => setMobileTemplateTab('prompt')}
+                  className={`flex-1 py-2 rounded-md text-[11px] font-medium transition-all ${
+                    mobileTemplateTab === 'prompt'
+                      ? 'bg-slate-700/80 text-white shadow-sm'
+                      : 'text-slate-500 hover:text-slate-300'
+                  }`}>
+                  🎯 提示词
+                </button>
+                <button onClick={() => setMobileTemplateTab('style')}
+                  className={`flex-1 py-2 rounded-md text-[11px] font-medium transition-all ${
+                    mobileTemplateTab === 'style'
+                      ? 'bg-slate-700/80 text-white shadow-sm'
+                      : 'text-slate-500 hover:text-slate-300'
+                  }`}>
+                  🎨 全局风格
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* 提示词选择区 — 桌面端始终显示，手机端按 Tab 显隐 */}
+          <div className={`${isMobile ? 'flex-1 overflow-y-auto' : ''}`} style={isMobile ? { minHeight: 0 } : {}}>
+          <div className={`transition-all duration-300 ${isMobile ? 'px-4 pt-2 pb-2' : 'px-6 pt-4 pb-3'} ${isMobile && mobileTemplateTab !== 'prompt' ? 'hidden' : ''} ${customPromptEnabled ? 'opacity-30 pointer-events-none' : ''}`}>
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <span className="text-[11px] font-medium text-slate-400">提示词</span>
@@ -1577,7 +1642,7 @@ function AiGenPanel({ prompts, customPrompts, setCustomPrompts, selectedPromptNa
                 )}
               </span>
             </div>
-            <p className="text-[10px] text-slate-600 mb-3 leading-relaxed">动作、表情、神态、天气等，与全局风格内容冲突时以全局为主</p>
+            <p className={`text-[10px] text-slate-600 leading-relaxed ${isMobile ? 'mb-2' : 'mb-3'}`}>动作、表情、神态、天气等，与全局风格内容冲突时以全局为主</p>
             {promptList.length > 0 ? (
               <div className="flex flex-wrap gap-2">
                 {promptList.map(p => {
@@ -1607,15 +1672,15 @@ function AiGenPanel({ prompts, customPrompts, setCustomPrompts, selectedPromptNa
               </button>
             )}
             {selectedPromptNames.length > 0 && selectedPromptNames.length < 9 && (
-              <div className="mt-2 text-[10px] text-slate-600">
+              <div className="mt-1.5 text-[10px] text-slate-600">
                 剩余 {9 - selectedPromptNames.length} 个位置将使用默认风格自动填充
               </div>
             )}
           </div>
-          <div className="h-px bg-gradient-to-r from-transparent via-slate-700/40 to-transparent mx-6" />
+          <div className={`h-px bg-gradient-to-r from-transparent via-slate-700/40 to-transparent ${isMobile ? 'mx-4' : 'mx-6'}`} />
 
-          {/* 全局风格选择区 */}
-          <div className={`px-6 py-4 transition-all duration-300 ${customPromptEnabled ? 'opacity-30 pointer-events-none' : ''}`}>
+          {/* 全局风格选择区 — 桌面端始终显示，手机端按 Tab 显隐 */}
+          <div className={`transition-all duration-300 ${isMobile ? 'px-4 py-2' : 'px-6 py-4'} ${isMobile && mobileTemplateTab !== 'style' ? 'hidden' : ''} ${customPromptEnabled ? 'opacity-30 pointer-events-none' : ''}`}>
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <span className="text-[11px] font-medium text-slate-400">全局风格</span>
@@ -1633,7 +1698,7 @@ function AiGenPanel({ prompts, customPrompts, setCustomPrompts, selectedPromptNa
                 )}
               </span>
             </div>
-            <p className="text-[10px] text-slate-600 mb-3 leading-relaxed">选择一个风格应用到所有生成的图片，点击已选可取消</p>
+            <p className={`text-[10px] text-slate-600 leading-relaxed ${isMobile ? 'mb-2' : 'mb-3'}`}>选择一个风格应用到所有生成的图片，点击已选可取消</p>
             {styleList.length > 0 ? (
               <div className="flex flex-wrap gap-2">
                 {styleList.map(p => {
@@ -1662,10 +1727,10 @@ function AiGenPanel({ prompts, customPrompts, setCustomPrompts, selectedPromptNa
               </button>
             )}
           </div>
-          <div className="h-px bg-gradient-to-r from-transparent via-slate-700/40 to-transparent mx-6" />
+          <div className={`h-px bg-gradient-to-r from-transparent via-slate-700/40 to-transparent ${isMobile ? 'mx-4' : 'mx-6'}`} />
 
           {/* 比例和分辨率选择 — 单行排列 */}
-          <div className="px-6 py-4">
+          <div className={`${isMobile ? 'px-4 py-2' : 'px-6 py-4'}`}>
             <span className="text-[11px] font-medium text-slate-400 mb-3 block">比例和分辨率</span>
             <div className="flex items-center gap-3 flex-wrap">
               {/* 比例 */}
@@ -1721,10 +1786,10 @@ function AiGenPanel({ prompts, customPrompts, setCustomPrompts, selectedPromptNa
               </select>
             </div>
           </div>
-          <div className="h-px bg-gradient-to-r from-transparent via-slate-700/40 to-transparent mx-6" />
+          <div className={`h-px bg-gradient-to-r from-transparent via-slate-700/40 to-transparent ${isMobile ? 'mx-4' : 'mx-6'}`} />
 
           {/* 生成选项 - 自定义开启时禁用 */}
-          <div className="px-6 py-4">
+          <div className={`${isMobile ? 'px-4 py-2' : 'px-6 py-4'}`}>
             <span className="text-[11px] font-medium text-slate-400 mb-3 block">生成选项</span>
             <label title={!textModelEnabled ? '需要先开启文字模型（AI 分析）' : ''} className={`flex items-center gap-5 px-4 py-3.5 rounded-xl border transition-all group ${
               !textModelEnabled || customPromptEnabled
@@ -1745,10 +1810,10 @@ function AiGenPanel({ prompts, customPrompts, setCustomPrompts, selectedPromptNa
                 className="sr-only" />
             </label>
           </div>
-          <div className="h-px bg-gradient-to-r from-transparent via-slate-700/40 to-transparent mx-6" />
+          <div className={`h-px bg-gradient-to-r from-transparent via-slate-700/40 to-transparent ${isMobile ? 'mx-4' : 'mx-6'}`} />
 
           {/* 自定义提示词推杆 */}
-          <div className="px-6 py-4">
+          <div className={`${isMobile ? 'px-4 py-2' : 'px-6 py-4'}`}>
             <span className="text-[11px] font-medium text-slate-400 mb-3 block">其他选项</span>
             <label className="flex items-center gap-5 px-4 py-3.5 rounded-xl bg-slate-800/40 border border-slate-700/40 cursor-pointer hover:border-slate-600/60 transition-all group">
               <div className="relative w-14 h-7 rounded-full border-2 border-white/70 transition-all duration-300 flex-shrink-0 overflow-hidden">
@@ -1789,9 +1854,10 @@ function AiGenPanel({ prompts, customPrompts, setCustomPrompts, selectedPromptNa
               </div>
             )}
           </div>
+          </div>
 
           {/* 生图按钮 */}
-          <div className="px-6 pb-6">
+          <div className="flex-shrink-0 px-6 pb-6" style={isMobile ? { paddingBottom: 'max(16px, env(safe-area-inset-bottom, 8px))' } : {}}>
             <button onClick={onGenerate} disabled={genLoading || !result}
               className="w-full py-3 rounded-xl text-sm font-bold tracking-wide bg-gradient-to-r from-pink-500 to-violet-500 hover:from-pink-400 hover:to-violet-400 active:scale-[0.98] transition-all duration-200 text-white shadow-lg shadow-pink-500/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100">
               {genLoading ? (
@@ -1834,6 +1900,7 @@ function AiGenGrid({ images, progress, loading, error, imageHeight, progressPct,
   const [gridDim, setGridDim] = React.useState(400); // 网格总尺寸（宽高相等）
   const gridRef = React.useRef(null);
   const containerRef = React.useRef(null);
+  const isMobile = useIsMobile();
 
   React.useEffect(() => {
     requestAnimationFrame(() => setVisible(true));
@@ -2000,21 +2067,21 @@ function AiGenGrid({ images, progress, loading, error, imageHeight, progressPct,
       {/* 悬浮大图预览 */}
       {previewImg && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+          className="ai-gen-preview-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
           onClick={closePreview}
         >
           <div
-            className="flex gap-4 p-4 rounded-2xl overflow-hidden animate-[fadeIn_0.2s_ease-out]"
+            className={`flex ${isMobile ? 'flex-col gap-0 p-0 rounded-none' : 'gap-4 p-4 rounded-2xl'} overflow-hidden animate-[fadeIn_0.2s_ease-out]`}
             onClick={e => e.stopPropagation()}
-            style={{ background: 'rgba(15,23,42,0.95)', maxWidth: '95vw', maxHeight: '90vh' }}
+            style={{ background: 'rgba(15,23,42,0.95)', maxWidth: '95vw', maxHeight: isMobile ? '100vh' : '90vh' }}
           >
             {/* 图片区域 */}
-            <div style={{ position: 'relative', flexShrink: 0 }}>
+            <div className="ai-gen-preview-img-area" style={{ position: 'relative', flexShrink: 0 }}>
               <img
                 src={previewImg.url}
                 alt={`生成图 ${previewImg.index + 1}`}
                 className="max-h-[80vh] w-auto object-contain rounded-xl"
-                style={{ maxWidth: '70vw' }}
+                style={{ maxWidth: isMobile ? '100vw' : '70vw', maxHeight: isMobile ? '60vh' : '80vh', borderRadius: isMobile ? 0 : undefined }}
               />
 
               {/* 底部操作栏 */}
@@ -2088,7 +2155,7 @@ function AiGenGrid({ images, progress, loading, error, imageHeight, progressPct,
             </div>
 
             {/* 提示词面板 */}
-            <div style={{ minWidth: '200px', maxWidth: '280px', alignSelf: 'stretch', background: 'rgba(30,41,59,0.9)', borderRadius: '12px', padding: '16px', border: '1px solid rgba(100,116,139,0.2)', overflowY: 'auto' }}>
+            <div className="ai-gen-preview-prompt-card" style={{ minWidth: isMobile ? 'auto' : '200px', maxWidth: isMobile ? 'none' : '280px', alignSelf: 'stretch', background: 'rgba(30,41,59,0.9)', borderRadius: isMobile ? '0' : '12px', padding: isMobile ? '12px 16px' : '16px', border: isMobile ? 'none' : '1px solid rgba(100,116,139,0.2)', borderTop: isMobile ? '1px solid rgba(100,116,139,0.2)' : undefined, overflowY: 'auto' }}>
               <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>提示词</div>
               <div style={{ color: '#94a3b8', fontSize: '13px', lineHeight: '1.7', wordBreak: 'break-word' }}>
                 {images[previewImg.index]?.prompt || '无提示词信息'}

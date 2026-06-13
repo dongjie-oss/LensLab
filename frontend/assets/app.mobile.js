@@ -2253,7 +2253,6 @@ function AiGenGrid({
   const [gridDim, setGridDim] = React.useState(400); // 网格总尺寸（宽高相等）
   const gridRef = React.useRef(null);
   const containerRef = React.useRef(null);
-  const isMobile = useIsMobile();
   React.useEffect(() => {
     requestAnimationFrame(() => setVisible(true));
   }, []);
@@ -2419,18 +2418,17 @@ function AiGenGrid({
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-xs text-red-400"
   }, error))), previewImg && /*#__PURE__*/React.createElement("div", {
-    className: "ai-gen-preview-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm",
+    className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm",
     onClick: closePreview
   }, /*#__PURE__*/React.createElement("div", {
-    className: `flex ${isMobile ? 'flex-col gap-0 p-0 rounded-none' : 'gap-4 p-4 rounded-2xl'} overflow-hidden animate-[fadeIn_0.2s_ease-out]`,
+    className: "flex gap-4 p-4 rounded-2xl overflow-hidden animate-[fadeIn_0.2s_ease-out]",
     onClick: e => e.stopPropagation(),
     style: {
       background: 'rgba(15,23,42,0.95)',
       maxWidth: '95vw',
-      maxHeight: isMobile ? '100vh' : '90vh'
+      maxHeight: '90vh'
     }
   }, /*#__PURE__*/React.createElement("div", {
-    className: "ai-gen-preview-img-area",
     style: {
       position: 'relative',
       flexShrink: 0
@@ -2440,9 +2438,7 @@ function AiGenGrid({
     alt: `生成图 ${previewImg.index + 1}`,
     className: "max-h-[80vh] w-auto object-contain rounded-xl",
     style: {
-      maxWidth: isMobile ? '100vw' : '70vw',
-      maxHeight: isMobile ? '60vh' : '80vh',
-      borderRadius: isMobile ? 0 : undefined
+      maxWidth: '70vw'
     }
   }), /*#__PURE__*/React.createElement("div", {
     className: "flex items-center justify-between px-5 py-3 bg-slate-900/95 backdrop-blur-md border-t border-slate-800/60 rounded-b-xl"
@@ -2520,16 +2516,14 @@ function AiGenGrid({
     strokeWidth: 2,
     d: "M6 18L18 6M6 6l12 12"
   })))))), /*#__PURE__*/React.createElement("div", {
-    className: "ai-gen-preview-prompt-card",
     style: {
-      minWidth: isMobile ? 'auto' : '200px',
-      maxWidth: isMobile ? 'none' : '280px',
+      minWidth: '200px',
+      maxWidth: '280px',
       alignSelf: 'stretch',
       background: 'rgba(30,41,59,0.9)',
-      borderRadius: isMobile ? '0' : '12px',
-      padding: isMobile ? '12px 16px' : '16px',
-      border: isMobile ? 'none' : '1px solid rgba(100,116,139,0.2)',
-      borderTop: isMobile ? '1px solid rgba(100,116,139,0.2)' : undefined,
+      borderRadius: '12px',
+      padding: '16px',
+      border: '1px solid rgba(100,116,139,0.2)',
       overflowY: 'auto'
     }
   }, /*#__PURE__*/React.createElement("div", {

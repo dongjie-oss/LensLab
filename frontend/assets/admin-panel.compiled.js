@@ -476,25 +476,25 @@ function AdminPanel({
     setVerStatus('loading');
     setVerErr('');
     setVerPage(1); // Bug 修复：重置页码
+    // 独立获取本地版本，避免因单个请求失败导致无法检查更新
     try {
       const res = await apiCall('/api/versions');
       if (res.ok) {
         const data = await res.json();
-        // current 可能是对象或字符串
         const cv = data.current;
         setCurrentVer(typeof cv === 'object' ? cv.version || '...' : cv || '...');
         setChangelog(data.changelog || []);
       }
+    } catch (e) {
+      setVerErr(e.message);
+    }
+    // 检查更新（优先 GitHub，失败回退 ACR）
+    try {
       const checkRes = await apiCall('/api/versions/check');
       if (checkRes.ok) {
         const data = await checkRes.json();
-        setLatestVer(data);
-        // 如果没有 update_available 字段，根据 has_local_record 判断
-        if (data.update_available) {
-          setVerStatus('available');
-        } else {
-          setVerStatus('latest');
-        }
+        setLatestVer(data.latest || data);
+        setVerStatus(data.update_available ? 'available' : data.is_dev ? 'dev' : 'latest');
       } else {
         setVerStatus('latest');
       }
@@ -851,16 +851,26 @@ function AdminPanel({
   }, /*#__PURE__*/React.createElement("div", {
     className: "bg-slate-800/30 rounded-xl p-4 border border-slate-700/50"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "text-[10px] text-slate-500 uppercase tracking-wider mb-2"
+    className: "flex items-center justify-between mb-2"
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "text-[10px] text-slate-500 uppercase tracking-wider"
   }, "\u5F53\u524D\u7248\u672C"), /*#__PURE__*/React.createElement("div", {
     className: "text-xl font-bold mono text-white"
-  }, "v", currentVer)), verStatus === 'loading' && /*#__PURE__*/React.createElement("div", {
+  }, "v", currentVer)), /*#__PURE__*/React.createElement("button", {
+    onClick: loadVersions,
+    disabled: verStatus === 'loading',
+    className: "text-xs bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-slate-200 px-3 py-1.5 rounded-lg transition-colors"
+  }, verStatus === 'loading' ? '检查中...' : '检查更新')), verErr && /*#__PURE__*/React.createElement("div", {
+    className: "text-xs text-red-400 mb-2"
+  }, verErr), verStatus === 'loading' && /*#__PURE__*/React.createElement("div", {
     className: "rounded-xl p-3 text-xs text-slate-400 bg-slate-800/20"
   }, "\u68C0\u67E5\u66F4\u65B0\u4E2D..."), verStatus === 'latest' && /*#__PURE__*/React.createElement("div", {
     className: "rounded-xl p-3 text-xs text-green-400 bg-green-500/10 border border-green-500/20"
   }, "\u2713 \u5DF2\u662F\u6700\u65B0\u7248\u672C"), verStatus === 'available' && latestVer && /*#__PURE__*/React.createElement("div", {
     className: "rounded-xl p-3 text-xs text-yellow-400 bg-yellow-500/10 border border-yellow-500/20"
-  }, "\u26A0 \u53D1\u73B0\u65B0\u7248\u672C v", latestVer.latest_version || latestVer.version || '?', "\uFF0C\u8BF7\u6267\u884C\u5347\u7EA7\u547D\u4EE4"), changelog.length > 0 && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+  }, "\u26A0 \u53D1\u73B0\u65B0\u7248\u672C v", latestVer.version, "\uFF0C\u8BF7\u6267\u884C\u5347\u7EA7\u547D\u4EE4"), verStatus === 'dev' && /*#__PURE__*/React.createElement("div", {
+    className: "rounded-xl p-3 text-xs text-blue-400 bg-blue-500/10 border border-blue-500/20"
+  }, "\u2699\uFE0F \u5F53\u524D\u7248\u672C\u4E3A\u5F00\u53D1\u7248\u672C\uFF08v", currentVer, "\uFF09\uFF0C\u5C1A\u672A\u516C\u5F00")), changelog.length > 0 && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     className: "text-[10px] text-slate-500 uppercase tracking-wider mb-2"
   }, "\u66F4\u65B0\u65E5\u5FD7"), /*#__PURE__*/React.createElement("div", {
     className: "space-y-2"

@@ -122,6 +122,31 @@ BUNDLED_CHANGELOG = [
             ]
         },
     },
+    {
+        "version": "1.0.4",
+        "date": "2026-06-14",
+        "notes": "v1.0.4 — 移动端适配 + AI生图BUG修复 + 版本检测升级",
+        "digest": "",
+        "detail": {
+            "sections": [
+                {"type": "added", "items": [
+                    "移动端适配：抽屉导航、顶栏精简、主区触摸滚动、safe area",
+                    "mobile-enhancer.js：fixed 抽屉 + 遮罩方案，左侧历史抽屉 200px",
+                    "app.mobile.js：独立移动端 React 构建文件",
+                    "useIsMobile() hook：检测移动端视图",
+                    "AI 生图预览移动端布局：图片在上 + 提示词在下（竖向排列）",
+                    "版本检测升级：GitHub version.json 零认证优先 → ACR fallback",
+                    "手动检查更新按钮、开发版蓝色提示",
+                    "批量选择/删除按钮移动端可见",
+                ]},
+                {"type": "fixed", "items": [
+                    "AI 生图 N 个提示词生成 N×9 张图 BUG：改为每个提示词取 1 种随机风格",
+                    "移动端左侧抽屉文字被全局 CSS 规则隐藏：精确控制可见元素",
+                    "版本信息启动自动同步",
+                ]},
+            ]
+        },
+    },
 ]
 
 
@@ -139,8 +164,8 @@ DEFAULT_VERSIONS = {
         "version": __version__,
         "digest": "",
         "data_version": CURRENT_DATA_VERSION,
-        "date": "2026-06-13",
-        "notes": "v" + __version__ + " — AI内容智能识别 + 人像专属风格",
+        "date": "2026-06-14",
+        "notes": "v" + __version__ + " — 移动端适配 + AI生图BUG修复 + 版本检测升级",
     },
     "changelog": [item.copy() for item in BUNDLED_CHANGELOG],
 }
@@ -151,6 +176,9 @@ ACR_NAMESPACE = os.getenv("ACR_NAMESPACE", "exposure-lab")
 ACR_REPO = os.getenv("ACR_REPO", "exposure-lab")
 ACR_USERNAME = os.getenv("ACR_USERNAME", "")
 ACR_PASSWORD = os.getenv("ACR_PASSWORD", "")
+
+# GitHub 版本发布仓库（公开，零认证查询）
+RELEASE_REPO = os.getenv("RELEASE_REPO", "dongjie-oss/LensLab")
 
 
 def load_versions() -> dict:
@@ -290,6 +318,26 @@ def _fetch_github_tags() -> list[str]:
     return tags
 
 
+def _fetch_version_json() -> Optional[dict]:
+    """
+    从 GitHub 公开仓库获取 version.json（零认证）。
+    这是版本检测的主要来源。
+    """
+    url = f"https://raw.githubusercontent.com/{RELEASE_REPO}/main/version.json"
+    logger.info(f"查询版本文件: {url}")
+    try:
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "LensLab/version-check",
+        })
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            if "latest" in data:
+                logger.info(f"远端版本文件获取成功: {data['latest'].get('version')}")
+                return data
+    except Exception as e:
+        logger.warning(f"查询版本文件失败: {e}")
+    return None
+
 def _fetch_acr_tags_with_auth() -> list[str]:
     """带 Token 登录的 ACR 查询"""
     url = f"https://{ACR_REGISTRY}/v2/{ACR_NAMESPACE}/{ACR_REPO}/tags/list"
@@ -333,43 +381,93 @@ def _find_latest_version(tags: list[str]) -> Optional[str]:
 def check_for_update() -> dict:
     """
     检查是否有可用更新。
-    优先查 ACR 远端 tag（带认证 fallback），失败后提示手动升级。
+    优先从 GitHub 公开仓库的 version.json 获取最新信息，无需认证。
+    若失败，则回退到 ACR 标签查询（公开或带认证）。
+    返回结构包含 'latest' 对象、'update_available' 状态和 'is_dev' 标记。
     """
     current = get_current_version()
     current_ver = current.get("version", __version__)
 
-    # 查远端
+    # 1️⃣ 尝试从 GitHub 版本文件获取
+    remote_ver_data = _fetch_version_json()
+    if remote_ver_data and "latest" in remote_ver_data:
+        latest_info = remote_ver_data["latest"]
+        latest_ver = latest_info.get("version")
+        if latest_ver:
+            cur_tuple = _parse_semver(current_ver)
+            lat_tuple = _parse_semver(latest_ver)
+            if lat_tuple > cur_tuple:
+                return {
+                    "latest": latest_info,
+                    "update_available": True,
+                    "message": f"有新版本可用: {latest_ver}（当前: {current_ver}）",
+                    "upgrade_hint": f"docker pull {latest_info.get('docker_image', ACR_REGISTRY + '/' + ACR_NAMESPACE + '/' + ACR_REPO + ':' + latest_ver)}",
+                }
+            elif cur_tuple > lat_tuple:
+                return {
+                    "latest": latest_info,
+                    "update_available": False,
+                    "is_dev": True,
+                    "message": f"当前版本为开发版本（v{current_ver}），尚未公开",
+                }
+            else:
+                return {
+                    "latest": latest_info,
+                    "update_available": False,
+                    "message": "已是最新版本",
+                }
+
+    # 2️⃣ 回退到 ACR 标签查询
     tags = _fetch_acr_tags()
-    latest = _find_latest_version(tags)
+    latest_tag = _find_latest_version(tags)
+    if latest_tag:
+        cur_tuple = _parse_semver(current_ver)
+        lat_tuple = _parse_semver(latest_tag)
+        if lat_tuple > cur_tuple:
+            latest_info = {
+                "version": latest_tag,
+                "date": None,
+                "notes": None,
+                "docker_image": f"{ACR_REGISTRY}/{ACR_NAMESPACE}/{ACR_REPO}:{latest_tag}",
+            }
+            return {
+                "latest": latest_info,
+                "update_available": True,
+                "message": f"有新版本可用: {latest_tag}（当前: {current_ver}）",
+                "upgrade_hint": f"docker pull {latest_info['docker_image']}",
+            }
+        elif cur_tuple > lat_tuple:
+            latest_info = {
+                "version": latest_tag,
+                "date": None,
+                "notes": None,
+                "docker_image": f"{ACR_REGISTRY}/{ACR_NAMESPACE}/{ACR_REPO}:{latest_tag}",
+            }
+            return {
+                "latest": latest_info,
+                "update_available": False,
+                "is_dev": True,
+                "message": f"当前版本为开发版本（v{current_ver}），尚未公开",
+            }
+        else:
+            latest_info = {
+                "version": latest_tag,
+                "date": None,
+                "notes": None,
+                "docker_image": f"{ACR_REGISTRY}/{ACR_NAMESPACE}/{ACR_REPO}:{latest_tag}",
+            }
+            return {
+                "latest": latest_info,
+                "update_available": False,
+                "message": "已是最新版本",
+            }
 
-    # 如果 ACR 也查不到
-    if not latest:
-        return {
-            "current_version": current_ver,
-            "latest_version": None,
-            "update_available": False,
-            "message": "无法获取远端版本信息，请手动检查",
-        }
-
-    # 对比
-    cur_tuple = _parse_semver(current_ver)
-    lat_tuple = _parse_semver(latest)
-
-    if lat_tuple > cur_tuple:
-        return {
-            "current_version": current_ver,
-            "latest_version": latest,
-            "update_available": True,
-            "message": f"有新版本可用: {latest}（当前: {current_ver}）",
-            "upgrade_hint": f"docker pull {ACR_REGISTRY}/{ACR_NAMESPACE}/{ACR_REPO}:{latest}",
-        }
-    else:
-        return {
-            "current_version": current_ver,
-            "latest_version": latest,
-            "update_available": False,
-            "message": "已是最新版本",
-        }
+    # 3️⃣ 都失败
+    return {
+        "latest": None,
+        "update_available": False,
+        "message": "无法获取远端版本信息，请手动检查",
+    }
 
 
 def update_version_meta(

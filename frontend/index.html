@@ -68,7 +68,29 @@
   window.__version__ = "...";
   fetch('/api/version').then(r => r.json()).then(d => { if (d.version) window.__version__ = d.version; }).catch(() => {});
 </script>
-<script src="assets/admin-panel.compiled.js?v=1780819828"></script>
-<script src="assets/app.compiled.js?v=1780819828"></script>
+<!-- Loader: desktop=1 forces old desktop; mobile=1 forces mobile; otherwise auto-detects by width -->
+<script>
+  (function() {
+    const url = new URL(window.location.href);
+    const forceDesktop = url.searchParams.get('desktop') === '1';
+    const forceMobile = url.searchParams.get('mobile') === '1';
+    const isMobile = window.innerWidth < 1024;
+
+    // admin panel is same for all
+    document.write('<scr' + 'ipt src="assets/admin-panel.compiled.js?v=1780819828"><\/script>');
+
+    let mainSrc;
+    if (forceDesktop) {
+      mainSrc = 'assets/app.compiled.js?v=1780819828';
+    } else if (forceMobile || isMobile) {
+      mainSrc = 'assets/app.mobile.js?v=1780819828';
+    } else {
+      mainSrc = 'assets/app.compiled.js?v=1780819828';
+    }
+    document.write('<scr' + 'ipt src="' + mainSrc + '"><\/script>');
+  })();
+</script>
+<!-- Mobile Enhancer: 响应式布局 + 触摸支持，不修改原始 React 代码 -->
+<script src="assets/mobile-enhancer.js?v=1"></script>
 </body>
 </html>

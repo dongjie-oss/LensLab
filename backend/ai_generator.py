@@ -717,6 +717,7 @@ def _run_generation(task_id: str, file_id: str, mode: str, custom_prompts: list 
 
         elif custom_prompts and not global_style:
             # 只有自定义提示词，无全局风格
+            # 每个提示词分配一种不同的随机/默认风格，生成 N 张
             if num_images == 1 or len(custom_prompts) == 1:
                 # 1个提示词 → 1张，纯用户提示词 + 原图内容
                 cp = custom_prompts[0]
@@ -724,12 +725,15 @@ def _run_generation(task_id: str, file_id: str, mode: str, custom_prompts: list 
                 style_prompts.append({"prompt": prompt, "label": cp.get('name', '自定义')})
                 logger.info(f"自定义提示词 only → 1 image")
             else:
-                # 多个提示词 → 每个提示词 9 张不同风格
+                # N个提示词 → N张，每个提示词分配一种不同的随机风格
+                import random
+                shuffled_styles = list(default_styles)
+                random.shuffle(shuffled_styles)
                 for i, cp in enumerate(custom_prompts):
-                    for ds in default_styles:
-                        prompt = f"基于以下照片内容重新创作高质量图片：{content_desc}。风格：{ds['prompt']}。{cp.get('content', '')}"
-                        style_prompts.append({"prompt": prompt, "label": f"{ds['label']}·{cp.get('name', f'提示词{i+1}')}"})
-                logger.info(f"{len(custom_prompts)} prompts × 9 风格 → {len(style_prompts)} images")
+                    ds = shuffled_styles[i % len(shuffled_styles)]
+                    prompt = f"基于以下照片内容重新创作高质量图片：{content_desc}。风格：{ds['prompt']}。{cp.get('content', '')}"
+                    style_prompts.append({"prompt": prompt, "label": f"{ds['label']}·{cp.get('name', f'提示词{i+1}')}"})
+                logger.info(f"{len(custom_prompts)} prompts × 各1种随机风格 → {len(style_prompts)} images")
 
         elif not global_style and not custom_prompts:
             # 什么都不选(无相似) → 9张不同默认风格
