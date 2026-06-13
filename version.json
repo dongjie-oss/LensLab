@@ -1,0 +1,90 @@
+{
+  "latest": {
+    "version": "1.0.2",
+    "date": "2026-06-12",
+    "digest": "sha256:82fd106ed9fa22340ea34b99b5a91a9cffc47c16bb84f28731b5f5c1ecfcb67f",
+    "docker_image": "registry.cn-hangzhou.aliyuncs.com/exposure-lab/exposure-lab:1.0.2",
+    "notes": "v1.0.2 — 新增系统清理功能 + UI 优化 + 配置迁移安全"
+  },
+  "changelog": [
+    {
+      "version": "1.0.2",
+      "date": "2026-06-12",
+      "notes": "新增系统清理功能 + UI 优化 + 配置迁移安全",
+      "sections": [
+        {
+          "type": "added",
+          "items": [
+            "后台管理系统 tab：自动/手动清理 AI 生成临时图片",
+            "AI 生图后自动检查 generated/ 大小，超过阈值自动清理旧文件",
+            "手动清理按钮一键清空临时图片"
+          ]
+        },
+        {
+          "type": "changed",
+          "items": [
+            "AI 生图设置面板：比例 → 方向 → 分辨率改为单行排列",
+            "首页文生图快捷面板：比例 → 方向 → 分辨率单行排列",
+            "config_manager.py 配置迁移：备份→合并→验证→回滚机制"
+          ]
+        },
+        {
+          "type": "fixed",
+          "items": [
+            "修复 AI 生图弹窗白屏问题（selectedRatio 未传入子组件）",
+            "自定义提示词模式下比例/分辨率不传递给后端",
+            "后台管理 API 配置丢失问题"
+          ]
+        }
+      ]
+    },
+    {
+      "version": "1.0.1",
+      "date": "2026-06-07",
+      "notes": "新增自定义提示词功能，优化AI生图速度与UI交互",
+      "sections": [
+        {
+          "type": "changed",
+          "items": [
+            "AI生图速度优化：LLM describe + generate_prompts 并行执行",
+            "并发参数提升：MAX_CONCURRENT 2→3，REQUEST_INTERVAL 3s→1s",
+            "前端按钮文案动态化：根据实际生成数量显示"
+          ]
+        },
+        {
+          "type": "added",
+          "items": [
+            "无限想象优先级系统：全局风格 > 用户提示词 > 无限想象",
+            "AiGenPanel 生成按钮回调支持自定义提示词模式",
+            "用户管理后台认证、模型配置、版本查看"
+          ]
+        },
+        {
+          "type": "refactor",
+          "items": [
+            "elif 分支从 6 个精简为 4 个，逻辑更清晰",
+            "check_startup.py api_key 空值不再阻塞容器启动"
+          ]
+        }
+      ]
+    },
+    {
+      "version": "1.0.0",
+      "date": "2026-06-03",
+      "notes": "初始版本 — 区域曝光分析、AI智能分析、AI生图、模板管理",
+      "sections": [
+        {
+          "type": "added",
+          "items": [
+            "照片上传、缩略图浏览与区域曝光分析功能",
+            "AI图表分析（直方图/分区亮度）",
+            "AI智能生图（9种预设风格模板）",
+            "用户管理后台（认证、模型配置、版本查看）",
+            "Docker Compose 一键部署",
+            "GitHub Actions CI/CD 自动构建推送到阿里云 ACR"
+          ]
+        }
+      ]
+    }
+  ]
+}
