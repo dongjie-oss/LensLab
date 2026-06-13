@@ -2,8 +2,8 @@
 
 > 📷 摄影区域曝光分析 + AI 智能生图工具
 
-[![GitHub release](https://img.shields.io/github/v/release/dongjie-oss/exposure-lab-releases)](https://github.com/dongjie-oss/exposure-lab-releases/releases)
-[![Docker](https://img.shields.io/badge/docker-ready-blue)](https://github.com/dongjie-oss/exposure-lab-releases#docker-部署)
+[![GitHub release](https://img.shields.io/github/v/release/dongjie-oss/LensLab)](https://github.com/dongjie-oss/LensLab/releases)
+[![Docker](https://img.shields.io/badge/docker-ready-blue)](https://github.com/dongjie-oss/LensLab#docker-部署)
 
 ---
 
@@ -17,7 +17,9 @@
 |------|------|
 | 🔍 区域曝光分析 | 上传照片 → 可视化 10 区域测光 → 判断曝光状态 |
 | 📊 AI 图表分析 | 直方图 / 分区亮度 AI 自动解读 |
-| 🎨 AI 智能生图 | 9 种预设风格模板 + 自定义提示词生图 |
+| 🎨 AI 智能生图 | 18 种预设风格模板（人像×9 + 通用×9）+ 自定义提示词生图 |
+| 🤖 AI 内容识别 | 自动识别图片内容类型（人像/风景/静物），匹配对应生图策略 |
+| 🖼️ 大图预览 | 预览图旁完整展示当前图片的提示词和标签 |
 | 🧹 系统管理 | AI 生成图片自动/手动清理 |
 | ⚙️ 设置面板 | 模型配置、版本查看、一键检查更新 |
 
@@ -91,27 +93,26 @@ docker compose down
 
 ---
 
-## 版本信息
+## 更新日志
 
-本仓库为 **公开版本发布信息仓库**，源码为闭源。
+### v1.0.3（2026-06-13）
+- **新增**：AI 图片内容智能识别 — 自动分类人像 / 风景 / 静物
+- **新增**：9 种人像专属风格模板（复古街拍 / 日系清新 / 时尚杂志 / 黑白质感 / 暖调写真 / 冷艳大片 / 电影感人像 / 自然纪实 / 创意光影）
+- **新增**：大图预览提示词面板 — 预览图旁完整展示提示词和标签
+- **优化**：无限想象生成策略根据内容类型自适应，人像场景使用专属风格
+- **修复**：文生图模式下分析结果栏误显示、describe 返回格式健壮性
 
-- **Docker 镜像**：`registry.cn-hangzhou.aliyuncs.com/exposure-lab/exposure-lab`
-- **最新版本**：查看 [`version.json`](version.json)
-- **更新日志**：见下方或 Release Notes
-
-### 最新更新日志
-
-#### v1.0.2（2026-06-12）
+### v1.0.2（2026-06-12）
 - **新增**：系统管理 tab — 自动/手动清理 AI 生成临时图片
 - **优化**：AI 生图设置面板 UI 布局改进（比例→方向→分辨率单行排列）
 - **修复**：AI 生图弹窗白屏、配置丢失问题
 
-#### v1.0.1（2026-06-07）
+### v1.0.1（2026-06-07）
 - **新增**：自定义提示词功能、无限想象优先级系统
 - **优化**：AI 生图速度（并行执行）、前端按钮动态化
 - **重构**：elif 分支精简、启动检查优化
 
-#### v1.0.0（2026-06-03）
+### v1.0.0（2026-06-03）
 - **初始版本**：区域曝光分析、AI 图表分析、AI 生图、Docker 一键部署
 
 ---
@@ -120,7 +121,7 @@ docker compose down
 
 应用会自动从本仓库的 `version.json` 检查是否有新版本：
 
-- **查询地址**：`https://raw.githubusercontent.com/dongjie-oss/exposure-lab-releases/main/version.json`
+- **查询地址**：`https://raw.githubusercontent.com/dongjie-oss/LensLab/main/version.json`
 - **无需认证**：仓库公开，直接 HTTP GET 即可
 - **检查频率**：设置页面手动点击 / 启动时自动检查
 

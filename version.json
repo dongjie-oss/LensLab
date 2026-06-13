@@ -1,12 +1,43 @@
 {
   "latest": {
-    "version": "1.0.2",
-    "date": "2026-06-12",
-    "digest": "sha256:82fd106ed9fa22340ea34b99b5a91a9cffc47c16bb84f28731b5f5c1ecfcb67f",
-    "docker_image": "registry.cn-hangzhou.aliyuncs.com/exposure-lab/exposure-lab:1.0.2",
-    "notes": "v1.0.2 — 新增系统清理功能 + UI 优化 + 配置迁移安全"
+    "version": "1.0.3",
+    "date": "2026-06-13",
+    "digest": "",
+    "docker_image": "registry.cn-hangzhou.aliyuncs.com/exposure-lab/exposure-lab:1.0.3",
+    "notes": "v1.0.3 — AI内容智能识别 + 人像专属风格 + 提示词预览"
   },
   "changelog": [
+    {
+      "version": "1.0.3",
+      "date": "2026-06-13",
+      "notes": "AI内容智能识别 + 人像专属风格 + 提示词预览",
+      "sections": [
+        {
+          "type": "added",
+          "items": [
+            "AI 图片内容智能识别：自动分类 portrait（人像）/ scene（风景）/ object（静物）",
+            "9 种人像专属风格模板：复古街拍/日系清新/时尚杂志/黑白质感/暖调写真/冷艳大片/电影感人像/自然纪实/创意光影",
+            "大图预览提示词面板：预览图右侧完整展示当前图片的提示词和标签",
+            "versions.py 内嵌权威 BUNDLED_CHANGELOG，启动时自动同步版本号与 changelog"
+          ]
+        },
+        {
+          "type": "changed",
+          "items": [
+            "无限想象生成策略根据内容类型自适应：人像场景使用专属风格，风景/静物使用通用风格",
+            "生成提示词根据 content_type 使用不同的 LLM 指令模板，提升内容匹配度",
+            "analyze 后自动切换区域模式时清除旧分析结果，防止残留"
+          ]
+        },
+        {
+          "type": "fixed",
+          "items": [
+            "文生图模式下分析结果栏误显示问题（增加 mode 判断条件）",
+            "describe 返回格式统一为 dict，降级处理更健壮"
+          ]
+        }
+      ]
+    },
     {
       "version": "1.0.2",
       "date": "2026-06-12",
