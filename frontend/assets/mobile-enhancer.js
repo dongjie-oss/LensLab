@@ -17,10 +17,10 @@
     '  display:none!important; position:fixed!important; z-index:2000!important;',
     '  overflow-y:auto; -webkit-overflow-scrolling:touch; background:#0d1117;',
     '}',
-    'body.force-mobile #mob-left { left:0; top:56px; bottom:0; width:200px; transform:translateX(-100%); transition:transform .25s ease; }',
-    'body.force-mobile #mob-right { right:0; top:56px; bottom:0; width:220px; transform:translateX(100%); transition:transform .25s ease; }',
-    'body.force-mobile.mob-open-left #mob-left { display:flex!important; flex-direction:column; transform:translateX(0); }',
-    'body.force-mobile.mob-open-right #mob-right { display:flex!important; flex-direction:column; transform:translateX(0); }',
+    'body.force-mobile #mob-left { left:0!important; top:56px!important; bottom:0!important; width:250px!important; transform:translateX(-100%)!important; transition:transform .25s ease; }',
+    'body.force-mobile #mob-right { right:0!important; top:56px!important; bottom:0!important; width:220px!important; transform:translateX(100%)!important; transition:transform .25s ease; }',
+    'body.force-mobile.mob-open-left #mob-left { display:flex!important; flex-direction:column!important; transform:translateX(0)!important; width:250px!important; }',
+    'body.force-mobile.mob-open-right #mob-right { display:flex!important; flex-direction:column!important; transform:translateX(0)!important; width:220px!important; }',
 
     /* ===== 遮罩 ===== */
     '#mob-overlay { display:none; position:fixed; inset:0; z-index:1500; background:rgba(0,0,0,0.8); }',
@@ -72,23 +72,22 @@
     /* 关闭按钮 */
     '.mob-close-btn { display:flex; align-items:center; justify-content:center; width:100%; padding:12px; background:#161b22; border-bottom:1px solid #1e293b; color:#e2e8f0; font-size:14px; cursor:pointer; flex-shrink:0; }',
 
-    /* 左侧抽屉：隐藏标题栏、上传按钮区，但保留批量选择和历史内容 */
-    '#mob-left > .p-4 h1 { display:none!important; }',
-    '#mob-left > .p-4 p { display:none!important; }',
-    '#mob-left > .p-4 .p-4 { padding:0!important; border:none!important; }',
-    '#mob-left > .p-4 > div:first-child { margin-bottom:-8px!important; }',
+    /* 左侧抽屉：隐藏标题栏、齿轮、上传按钮区，保留顶部历史记录标签和批量选择内容 */
+    '#mob-left > .p-4 { display:none!important; }',
     '#mob-left > .p-3 { display:none!important; }',
+    /* 隐藏flex-1区域内的“历史记录”小标签（保留批量选择按钮） */
+    '#mob-left .flex-1 > div:first-child > div:first-child { display:none!important; }',
     '#mob-left .flex-1 .truncate { display:inline!important; }',
     '#mob-left .flex-1 .text-xs.text-slate-300 { font-size:10px!important; display:block!important; color:#cbd5e1!important; }',
     '#mob-left .flex-1 .text-xs.text-slate-500 { font-size:9px!important; display:block!important; color:#64748b!important; }',
     '#mob-left .flex-1 .text-xs.text-slate-600 { font-size:9px!important; display:inline!important; }',
     '#mob-left .flex-1 .text-xs.text-red-400 { font-size:10px!important; display:inline!important; }',
 
-    /* 历史记录标题 */
-    '#mob-hist-label { padding:12px 16px 6px; color:#64748b; font-size:11px; font-weight:600; letter-spacing:0.05em; text-transform:uppercase; }',
+    /* 保留顶部历史记录标签样式 */
+    '#mob-hist-label { display:block!important; padding:12px 16px 6px; color:#94a3b8; font-size:13px; font-weight:600; letter-spacing:0.05em; }',
 
     /* 历史缩略图放大：40×40 → 160×160（抽屉 200px 的 80%） */
-    '#mob-left .flex-1 .w-10.h-10 { width:160px!important; height:160px!important; border-radius:8px!important; flex-shrink:0!important; }',
+    '#mob-left .flex-1 .w-10.h-10 { width:220px!important; height:220px!important; border-radius:8px!important; flex-shrink:0!important; }',
     '#mob-left .flex-1 .w-10.h-10 img { width:100%!important; height:100%!important; object-fit:cover!important; border-radius:8px!important; }',
     '#mob-left .flex-1 .group { padding:0!important; margin:0 0 12px!important; flex-direction:column!important; align-items:stretch!important; }',
     '/* 批量选择按钮行：白色文字，禁止截断 */',
@@ -235,6 +234,11 @@
     leftPanel.addEventListener('click', function (e) {
       if (e.target.closest('.mob-close-btn')) return;
       if (e.target.closest('button')) return;
+      /* 多选模式下不关闭抽屉（检测"退出"按钮是否存在） */
+      var btns = leftPanel.querySelectorAll('button');
+      for (var i = 0; i < btns.length; i++) {
+        if (btns[i].textContent.trim() === '退出') return;
+      }
       setTimeout(closeAll, 150);
     });
   }
