@@ -2,14 +2,17 @@ const { useState, useRef, useEffect, useCallback } = React;
 
 // --- 移动端检测 Hook ---
 function useIsMobile(breakpoint = 768) {
-  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= breakpoint);
+  // ?mobile=1 参数强制标记为移动端
+  const forceMobile = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('mobile') === '1';
+  const [isMobile, setIsMobile] = useState(() => forceMobile || (typeof window !== 'undefined' && window.innerWidth <= breakpoint));
   useEffect(() => {
+    if (forceMobile) return; // 强制移动端时不监听窗口变化
     const mq = window.matchMedia(`(max-width: ${breakpoint}px)`);
     const handler = (e) => setIsMobile(e.matches);
     mq.addEventListener('change', handler);
     setIsMobile(mq.matches);
     return () => mq.removeEventListener('change', handler);
-  }, [breakpoint]);
+  }, [breakpoint, forceMobile]);
   return isMobile;
 }
 
