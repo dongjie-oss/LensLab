@@ -2071,7 +2071,7 @@ function AiGenGrid({ images, progress, loading, error, imageHeight, progressPct,
           onClick={closePreview}
         >
           <div
-            className={`flex ${isMobile ? 'flex-col gap-0 p-0 rounded-none' : 'gap-4 p-4 rounded-2xl'} overflow-hidden animate-[fadeIn_0.2s_ease-out]`}
+            className={`flex ${isMobile ? 'flex-col gap-0 p-0 rounded-none overflow-y-auto' : 'gap-4 p-4 rounded-2xl overflow-hidden'}`}
             onClick={e => e.stopPropagation()}
             style={{ background: 'rgba(15,23,42,0.95)', maxWidth: '95vw', maxHeight: isMobile ? '100vh' : '90vh' }}
           >
@@ -2083,78 +2083,9 @@ function AiGenGrid({ images, progress, loading, error, imageHeight, progressPct,
                 className="max-h-[80vh] w-auto object-contain rounded-xl"
                 style={{ maxWidth: isMobile ? '100vw' : '70vw', maxHeight: isMobile ? '60vh' : '80vh', borderRadius: isMobile ? 0 : undefined }}
               />
-
-              {/* 底部操作栏 */}
-              <div className="flex items-center justify-between px-5 py-3 bg-slate-900/95 backdrop-blur-md border-t border-slate-800/60 rounded-b-xl">
-                <span className="text-xs text-slate-400 font-mono">#{previewImg.index + 1} / {displayCount}</span>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => downloadImage(previewImg.url, previewImg.index)}
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium
-                      bg-gradient-to-r from-pink-500 to-violet-500
-                      hover:from-pink-400 hover:to-violet-400
-                      active:scale-95 transition-all duration-200
-                      text-white shadow-lg shadow-pink-500/25"
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                    </svg>
-                    下载原图
-                  </button>
-                  {onAddToHistory && (
-                    <button
-                      onClick={addToHistory}
-                      disabled={addingToHistory || addedToHistory}
-                      className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium
-                        active:scale-95 transition-all duration-200
-                        ${addedToHistory
-                          ? 'bg-emerald-600/80 text-emerald-100 cursor-default'
-                          : 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white shadow-lg shadow-emerald-500/25'
-                        }
-                        ${addingToHistory ? 'opacity-70 cursor-wait' : ''}
-                      `}
-                    >
-                      {addedToHistory ? (
-                        <>
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                          </svg>
-                          已保存到历史
-                        </>
-                      ) : addingToHistory ? (
-                        <>
-                          <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                          </svg>
-                          保存中...
-                        </>
-                      ) : (
-                        <>
-                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                          </svg>
-                          添加到历史
-                        </>
-                      )}
-                    </button>
-                  )}
-                  <button
-                    onClick={closePreview}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium
-                      bg-slate-800 hover:bg-slate-700
-                      active:scale-95 transition-all duration-200
-                      text-slate-300"
-                  >
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
             </div>
 
-            {/* 提示词面板 */}
+            {/* 提示词面板 — 移动端图片下方、桌面端右侧 */}
             <div className="ai-gen-preview-prompt-card" style={{ minWidth: isMobile ? 'auto' : '200px', maxWidth: isMobile ? 'none' : '280px', alignSelf: 'stretch', background: 'rgba(30,41,59,0.9)', borderRadius: isMobile ? '0' : '12px', padding: isMobile ? '12px 16px' : '16px', border: isMobile ? 'none' : '1px solid rgba(100,116,139,0.2)', borderTop: isMobile ? '1px solid rgba(100,116,139,0.2)' : undefined, overflowY: 'auto' }}>
               <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>提示词</div>
               <div style={{ color: '#94a3b8', fontSize: '13px', lineHeight: '1.7', wordBreak: 'break-word' }}>
@@ -2165,6 +2096,75 @@ function AiGenGrid({ images, progress, loading, error, imageHeight, progressPct,
                   标签：{images[previewImg.index].label}
                 </div>
               )}
+            </div>
+
+            {/* 底部操作栏 */}
+            <div className={`flex items-center justify-between px-5 py-3 bg-slate-900/95 backdrop-blur-md border-t border-slate-800/60 ${isMobile ? 'w-full sticky bottom-0' : 'rounded-b-xl'}`}>
+              <span className="text-xs text-slate-400 font-mono">#{previewImg.index + 1} / {displayCount}</span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => downloadImage(previewImg.url, previewImg.index)}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium
+                    bg-gradient-to-r from-pink-500 to-violet-500
+                    hover:from-pink-400 hover:to-violet-400
+                    active:scale-95 transition-all duration-200
+                    text-white shadow-lg shadow-pink-500/25"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  下载原图
+                </button>
+                {onAddToHistory && (
+                  <button
+                    onClick={addToHistory}
+                    disabled={addingToHistory || addedToHistory}
+                    className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium
+                      active:scale-95 transition-all duration-200
+                      ${addedToHistory
+                        ? 'bg-emerald-600/80 text-emerald-100 cursor-default'
+                        : 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white shadow-lg shadow-emerald-500/25'
+                      }
+                      ${addingToHistory ? 'opacity-70 cursor-wait' : ''}
+                    `}
+                  >
+                    {addedToHistory ? (
+                      <>
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        已保存到历史
+                      </>
+                    ) : addingToHistory ? (
+                      <>
+                        <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                        </svg>
+                        保存中...
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                        添加到历史
+                      </>
+                    )}
+                  </button>
+                )}
+                <button
+                  onClick={closePreview}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium
+                    bg-slate-800 hover:bg-slate-700
+                    active:scale-95 transition-all duration-200
+                    text-slate-300"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
         </div>

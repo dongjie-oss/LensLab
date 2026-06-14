@@ -2253,6 +2253,7 @@ function AiGenGrid({
   const [gridDim, setGridDim] = React.useState(400); // 网格总尺寸（宽高相等）
   const gridRef = React.useRef(null);
   const containerRef = React.useRef(null);
+  const isMobile = useIsMobile();
   React.useEffect(() => {
     requestAnimationFrame(() => setVisible(true));
   }, []);
@@ -2418,17 +2419,18 @@ function AiGenGrid({
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-xs text-red-400"
   }, error))), previewImg && /*#__PURE__*/React.createElement("div", {
-    className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm",
+    className: "ai-gen-preview-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm",
     onClick: closePreview
   }, /*#__PURE__*/React.createElement("div", {
-    className: "flex gap-4 p-4 rounded-2xl overflow-hidden animate-[fadeIn_0.2s_ease-out]",
+    className: `flex ${isMobile ? 'flex-col gap-0 p-0 rounded-none overflow-y-auto' : 'gap-4 p-4 rounded-2xl overflow-hidden'}`,
     onClick: e => e.stopPropagation(),
     style: {
       background: 'rgba(15,23,42,0.95)',
       maxWidth: '95vw',
-      maxHeight: '90vh'
+      maxHeight: isMobile ? '100vh' : '90vh'
     }
   }, /*#__PURE__*/React.createElement("div", {
+    className: "ai-gen-preview-img-area",
     style: {
       position: 'relative',
       flexShrink: 0
@@ -2438,10 +2440,49 @@ function AiGenGrid({
     alt: `生成图 ${previewImg.index + 1}`,
     className: "max-h-[80vh] w-auto object-contain rounded-xl",
     style: {
-      maxWidth: '70vw'
+      maxWidth: isMobile ? '100vw' : '70vw',
+      maxHeight: isMobile ? '60vh' : '80vh',
+      borderRadius: isMobile ? 0 : undefined
     }
-  }), /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center justify-between px-5 py-3 bg-slate-900/95 backdrop-blur-md border-t border-slate-800/60 rounded-b-xl"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "ai-gen-preview-prompt-card",
+    style: {
+      minWidth: isMobile ? 'auto' : '200px',
+      maxWidth: isMobile ? 'none' : '280px',
+      alignSelf: 'stretch',
+      background: 'rgba(30,41,59,0.9)',
+      borderRadius: isMobile ? '0' : '12px',
+      padding: isMobile ? '12px 16px' : '16px',
+      border: isMobile ? 'none' : '1px solid rgba(100,116,139,0.2)',
+      borderTop: isMobile ? '1px solid rgba(100,116,139,0.2)' : undefined,
+      overflowY: 'auto'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: '11px',
+      color: '#64748b',
+      marginBottom: '8px',
+      textTransform: 'uppercase',
+      letterSpacing: '0.05em',
+      fontWeight: 600
+    }
+  }, "\u63D0\u793A\u8BCD"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: '#94a3b8',
+      fontSize: '13px',
+      lineHeight: '1.7',
+      wordBreak: 'break-word'
+    }
+  }, images[previewImg.index]?.prompt || '无提示词信息'), images[previewImg.index]?.label && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: '10px',
+      color: '#475569',
+      marginTop: '12px',
+      borderTop: '1px solid rgba(100,116,139,0.15)',
+      paddingTop: '8px'
+    }
+  }, "\u6807\u7B7E\uFF1A", images[previewImg.index].label)), /*#__PURE__*/React.createElement("div", {
+    className: `flex items-center justify-between px-5 py-3 bg-slate-900/95 backdrop-blur-md border-t border-slate-800/60 ${isMobile ? 'w-full sticky bottom-0' : 'rounded-b-xl'}`
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-xs text-slate-400 font-mono"
   }, "#", previewImg.index + 1, " / ", displayCount), /*#__PURE__*/React.createElement("div", {
@@ -2463,10 +2504,10 @@ function AiGenGrid({
     onClick: addToHistory,
     disabled: addingToHistory || addedToHistory,
     className: `flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium
-                        active:scale-95 transition-all duration-200
-                        ${addedToHistory ? 'bg-emerald-600/80 text-emerald-100 cursor-default' : 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white shadow-lg shadow-emerald-500/25'}
-                        ${addingToHistory ? 'opacity-70 cursor-wait' : ''}
-                      `
+                      active:scale-95 transition-all duration-200
+                      ${addedToHistory ? 'bg-emerald-600/80 text-emerald-100 cursor-default' : 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white shadow-lg shadow-emerald-500/25'}
+                      ${addingToHistory ? 'opacity-70 cursor-wait' : ''}
+                    `
   }, addedToHistory ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("svg", {
     className: "w-3.5 h-3.5",
     fill: "none",
@@ -2515,42 +2556,7 @@ function AiGenGrid({
     strokeLinejoin: "round",
     strokeWidth: 2,
     d: "M6 18L18 6M6 6l12 12"
-  })))))), /*#__PURE__*/React.createElement("div", {
-    style: {
-      minWidth: '200px',
-      maxWidth: '280px',
-      alignSelf: 'stretch',
-      background: 'rgba(30,41,59,0.9)',
-      borderRadius: '12px',
-      padding: '16px',
-      border: '1px solid rgba(100,116,139,0.2)',
-      overflowY: 'auto'
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: '11px',
-      color: '#64748b',
-      marginBottom: '8px',
-      textTransform: 'uppercase',
-      letterSpacing: '0.05em',
-      fontWeight: 600
-    }
-  }, "\u63D0\u793A\u8BCD"), /*#__PURE__*/React.createElement("div", {
-    style: {
-      color: '#94a3b8',
-      fontSize: '13px',
-      lineHeight: '1.7',
-      wordBreak: 'break-word'
-    }
-  }, images[previewImg.index]?.prompt || '无提示词信息'), images[previewImg.index]?.label && /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontSize: '10px',
-      color: '#475569',
-      marginTop: '12px',
-      borderTop: '1px solid rgba(100,116,139,0.15)',
-      paddingTop: '8px'
-    }
-  }, "\u6807\u7B7E\uFF1A", images[previewImg.index].label)))));
+  }))))))));
 }
 
 // AI 智能建议（手动触发）
