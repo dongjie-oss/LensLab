@@ -1,12 +1,45 @@
 {
   "latest": {
-    "version": "1.0.3",
-    "date": "2026-06-13",
-    "digest": "",
-    "docker_image": "registry.cn-hangzhou.aliyuncs.com/exposure-lab/exposure-lab:1.0.3",
-    "notes": "v1.0.3 — AI内容智能识别 + 人像专属风格 + 提示词预览"
+    "version": "1.0.4",
+    "date": "2026-06-16",
+    "digest": "8897560",
+    "docker_image": "registry.cn-hangzhou.aliyuncs.com/exposure-lab/exposure-lab:1.0.4",
+    "notes": "v1.0.4 正式版 — 移动端适配 + AI生图BUG修复 + 版本检测升级 + 数据持久化"
   },
   "changelog": [
+    {
+      "version": "1.0.4",
+      "date": "2026-06-16",
+      "notes": "v1.0.4 正式版 — 移动端适配 + AI生图BUG修复 + 版本检测升级 + 数据持久化",
+      "sections": [
+        {
+          "type": "added",
+          "items": [
+            "移动端适配：抽屉导航、顶栏精简、主区触摸滚动、safe area",
+            "mobile-enhancer.js：fixed 抽屉 + 遮罩方案，左侧历史抽屉 200px",
+            "独立移动端 React 构建 (app.mobile.js) + useIsMobile() hook",
+            "AI 生图预览移动端布局：图片在上 + 提示词在下（竖向排列）",
+            "版本检测升级：GitHub version.json 零认证优先 → ACR fallback",
+            "手动检查更新按钮、开发版蓝色提示",
+            "批量选择/删除按钮移动端可见",
+            "数据持久化：docker-entrypoint.sh 自动创建数据目录",
+            "数据管理脚本 scripts/persist-data.sh：init/verify/backup/restore/clean",
+            "启动自检增强：目录就绪检查、配置完整性校验"
+          ]
+        },
+        {
+          "type": "fixed",
+          "items": [
+            "AI 生图 N 个提示词生成 N×9 张图 BUG：改为每个提示词取 1 种随机风格",
+            "移动端左侧抽屉文字被全局 CSS 规则隐藏：精确控制可见元素",
+            "移动端 AI 预览弹窗提示词卡片移到图片下方",
+            "多选模式下点击历史图片不关闭抽屉",
+            "右侧面板 w-0 时黑边问题",
+            "版本信息启动自动同步"
+          ]
+        }
+      ]
+    },
     {
       "version": "1.0.3",
       "date": "2026-06-13",
