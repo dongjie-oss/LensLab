@@ -28,6 +28,10 @@ Thumbs.db
 # Runtime data (mounted via Docker - never commit)
 data/
 
+# 但保留 VERSIONS.json 模板（Docker 构建需要）
+!data/VERSIONS.json
+!data/VERSIONS.json.bak
+
 # Node.js
 frontend/node_modules/
 

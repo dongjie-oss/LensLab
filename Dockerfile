@@ -51,7 +51,7 @@ COPY --from=frontend-builder /app/frontend/assets ./frontend/assets
 RUN mkdir -p /app/data /app/data/uploads /app/data/results /app/data/generated /app/data/templates
 
 # 预置默认配置文件到镜像（首次启动时自动复制）
-COPY data/VERSIONS.json.bak /app/data/VERSIONS.json
+COPY data/VERSIONS.json /app/data/VERSIONS.json
 RUN echo '{"data_version":1,"items":[]}' > /app/data/history.json
 RUN echo '{}' > /app/data/config.json
 

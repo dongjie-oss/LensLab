@@ -2,6 +2,7 @@
 data/
 
 # 但保留 VERSIONS.json 模板
+!data/VERSIONS.json
 !data/VERSIONS.json.bak
 
 # Git
