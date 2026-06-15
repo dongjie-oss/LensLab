@@ -16,12 +16,24 @@ echo "======================================"
 DATA_DIR=${DATA_DIR:-/app/data}
 mkdir -p "$DATA_DIR/uploads" "$DATA_DIR/results" "$DATA_DIR/generated" "$DATA_DIR/templates"
 
-# 如果关键数据文件不存在，从镜像模板复制
-for f in VERSIONS.json; do
-    if [ ! -f "$DATA_DIR/$f" ]; then
-        cp "/app/data/$f" "$DATA_DIR/$f" 2>/dev/null || true
-    fi
-done
+# 如果 VERSIONS.json 不存在，从代码内嵌版本生成
+if [ ! -f "$DATA_DIR/VERSIONS.json" ]; then
+    python3 -c "
+import sys; sys.path.insert(0, '/app/backend')
+try:
+    from versions import BUNDLED_CHANGELOG, VERSIONS_FILE
+    import json
+    data = {'current': {'version': 'dev', 'data_version': 1, 'date': '', 'notes': ''}, 'changelog': BUNDLED_CHANGELOG, 'data_version': 1}
+    json.dump(data, open(str(VERSIONS_FILE), 'w'), ensure_ascii=False, indent=2)
+    print(f'Generated VERSIONS.json at {VERSIONS_FILE}')
+except Exception as e:
+    print(f'Warning: could not generate VERSIONS.json: {e}')
+" 2>/dev/null || true
+fi
+
+# 确保其他关键文件存在
+[ -f "$DATA_DIR/history.json" ] || echo '{"data_version":1,"items":[]}' > "$DATA_DIR/history.json"
+[ -f "$DATA_DIR/config.json" ] || echo '{}' > "$DATA_DIR/config.json"
 
 # 初始化配置
 python /app/backend/init_config.py

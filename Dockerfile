@@ -51,9 +51,10 @@ COPY --from=frontend-builder /app/frontend/assets ./frontend/assets
 RUN mkdir -p /app/data /app/data/uploads /app/data/results /app/data/generated /app/data/templates
 
 # 预置默认配置文件到镜像（首次启动时自动复制）
-COPY data/VERSIONS.json /app/data/VERSIONS.json
+# 运行时配置文件由 docker-entrypoint.sh 自动生成/复制
 RUN echo '{"data_version":1,"items":[]}' > /app/data/history.json
 RUN echo '{}' > /app/data/config.json
+RUN echo '{}' > /app/data/VERSIONS.json
 
 # 版本文件
 RUN echo "{\"version\":\"${BUILD_VERSION}\",\"build_time\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"git_sha\":\"dev\"}" > /app/version.json
