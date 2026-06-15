@@ -5,10 +5,11 @@
 set -e
 
 IMAGE_NAME="exposure-lab"
-CONTAINER_NAME="exposure-lab"
+CONTAINER_NAME="lenslab"
 HOST_PORT=8888
 CONTAINER_PORT=8765
 DATA_DIR="$(cd "$(dirname "$0")" && pwd)/data"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)/scripts"
 
 usage() {
     echo "用法: $0 [start|stop|restart|logs|status|rebuild]"

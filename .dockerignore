@@ -1,6 +1,9 @@
 # 运行时数据（Docker volume 挂载）
 data/
 
+# 但保留 VERSIONS.json 模板
+!data/VERSIONS.json.bak
+
 # Git
 .git/
 .gitignore

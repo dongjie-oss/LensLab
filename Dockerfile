@@ -48,7 +48,12 @@ COPY --from=frontend-builder /app/frontend/index.html ./frontend/index.html
 COPY --from=frontend-builder /app/frontend/assets ./frontend/assets
 
 # 数据目录（挂载点）
-RUN mkdir -p /app/data /app/data/uploads /app/data/results
+RUN mkdir -p /app/data /app/data/uploads /app/data/results /app/data/generated /app/data/templates
+
+# 预置默认配置文件到镜像（首次启动时自动复制）
+COPY data/VERSIONS.json.bak /app/data/VERSIONS.json
+RUN echo '{"data_version":1,"items":[]}' > /app/data/history.json
+RUN echo '{}' > /app/data/config.json
 
 # 版本文件
 RUN echo "{\"version\":\"${BUILD_VERSION}\",\"build_time\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"git_sha\":\"dev\"}" > /app/version.json
