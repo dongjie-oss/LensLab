@@ -2,7 +2,18 @@ const { useState, useRef, useEffect, useCallback } = React;
 
 // --- 移动端检测 Hook ---
 function useIsMobile(breakpoint = 768) {
-  // ?mobile=1 参数强制标记为移动端
+  // 动态设置 --vh（解决移动端浏览器栏遮挡问题）
+if (typeof window !== 'undefined') {
+  const updateVH = () => {
+    const vh = window.innerHeight * 0.01;
+    document.documentElement.style.setProperty('--vh', `${vh}px`);
+  };
+  updateVH();
+  window.addEventListener('resize', updateVH);
+  window.addEventListener('orientationchange', updateVH);
+}
+
+// ?mobile=1 参数强制标记为移动端
   const forceMobile = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('mobile') === '1';
   const [isMobile, setIsMobile] = useState(() => forceMobile || (typeof window !== 'undefined' && window.innerWidth <= breakpoint));
   useEffect(() => {
@@ -80,44 +91,55 @@ const evBgClass = (ev) => {
 
 // 测光点叠加层
 function MeteringOverlay({ points, width, height, imageWidth, imageHeight, visible }) {
-  if (!points || !visible) return null;
+  if (!points || !visible || !imageWidth || !imageHeight) return null;
   
-  const scaleX = imageWidth / width;
-  const scaleY = imageHeight / height;
-
+  const imgAspect = width / height;
+  const containerAspect = imageWidth / imageHeight;
+  let renderedW, renderedH, offsetX, offsetY;
+  
+  if (imgAspect > containerAspect) {
+    renderedW = imageWidth;
+    renderedH = imageWidth / imgAspect;
+  } else {
+    renderedH = imageHeight;
+    renderedW = imageHeight * imgAspect;
+  }
+  offsetX = (imageWidth - renderedW) / 2;
+  offsetY = (imageHeight - renderedH) / 2;
+  
+  // 根据格子数量自适应文字大小
+  const count = points.length;
+  const fontSize = count > 16 ? 8 : 9;
+  const lineHeight = count > 16 ? 10 : 12;
+  const dotSize = count > 16 ? 2 : 3;
+  const labelGap = count > 16 ? 4 : 5;
+  
   return (
     <div className="absolute inset-0 pointer-events-none">
       {points.map((p, i) => {
-        const left = (p.cx / width) * imageWidth;
-        const top = (p.cy / height) * imageHeight;
+        const pxX = offsetX + (p.cx / width) * renderedW;
+        const pxY = offsetY + (p.cy / height) * renderedH;
         const color = evColor(p.ev);
         
         return (
           <div
             key={i}
-            className="absolute transform -translate-x-1/2 -translate-y-1/2 metering-dot"
-            style={{ left, top, color }}
+            className="absolute metering-dot"
+            style={{ left: pxX, top: pxY, color, transform: 'translate(-50%, -50%)' }}
           >
             {/* 十字线 */}
-            <div className="absolute w-4 h-[1px] bg-current/40 left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" />
-            <div className="absolute w-[1px] h-4 bg-current/40 left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" />
+            <div className="absolute bg-current/40 left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ width: count > 16 ? 10 : 14, height: 1 }} />
+            <div className="absolute bg-current/40 left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ width: 1, height: count > 16 ? 10 : 14 }} />
             
             {/* 标签 */}
             <div 
-              className="absolute left-1/2 -translate-x-1/2 whitespace-nowrap flex flex-col items-center gap-0.5"
-              style={{ top: 18 }}
+              className="absolute whitespace-nowrap flex items-center"
+              style={{ top: labelGap, left: '50%', transform: 'translateX(-50%)' }}
             >
-              <span className="text-[10px] font-medium text-white/80 bg-black/60 px-1.5 py-0.5 rounded backdrop-blur-sm">
+              <span style={{ fontSize, lineHeight: `${lineHeight}px`, color: 'rgba(255,255,255,0.7)', background: 'rgba(0,0,0,0.5)', padding: '1px 4px', borderRadius: 3, backdropFilter: 'blur(4px)' }}>
                 {p.name}
               </span>
-              <span 
-                className="text-xs font-bold mono px-1.5 py-0.5 rounded backdrop-blur-sm border"
-                style={{ 
-                  backgroundColor: `${color}33`, 
-                  color: color,
-                  borderColor: `${color}55`
-                }}
-              >
+              <span style={{ fontSize, fontWeight: 700, lineHeight: `${lineHeight}px`, color, background: `${color}33`, padding: '1px 4px', borderRadius: 3, border: `1px solid ${color}44`, backdropFilter: 'blur(4px)' }}>
                 {p.ev_display} EV
               </span>
             </div>
@@ -165,7 +187,7 @@ function ModeSelector({ modes, current, onChange, disabled }) {
               ? 'bg-slate-800/30 text-slate-600 border border-slate-700/30 cursor-not-allowed'
               : current === m.key
                 ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40'
-                : 'bg-slate-800/50 text-slate-400 border border-slate-700/50 hover:border-slate-600'
+                : 'bg-slate-800/50 text-slate-200 border border-slate-700/50 hover:border-slate-600'
           }`}
         >
           {m.name}
@@ -209,6 +231,9 @@ function HistoryItem({ item, onSelect, onDelete, active, multiSelect, isSelected
       </div>
       <div className="flex-1 min-w-0">
         <div className="text-xs text-slate-300 truncate">{item.filename}</div>
+        {item.prompt && (
+          <div className="text-[10px] text-slate-500 truncate mt-0.5" title={item.prompt}>{item.prompt}</div>
+        )}
         <div className="text-[10px] text-slate-500">
           {new Date(item.timestamp).toLocaleString('zh-CN')}
         </div>
@@ -290,10 +315,17 @@ function App() {
   const [textGenLoading, setTextGenLoading] = useState(false);
   const [textGenImages, setTextGenImages] = useState([]);
   const [textGenProgress, setTextGenProgress] = useState(0);
-  const [isTextGenMode, setIsTextGenMode] = useState(true);
+  const [isTextGenMode, setIsTextGenMode] = useState(false);
   const [textGenError, setTextGenError] = useState(null);
   const [textGenTotal, setTextGenTotal] = useState(9);
   const [textGenTaskId, setTextGenTaskId] = useState('');
+
+  // AI 分析弹窗（移动端）
+  const [showAnalysisModal, setShowAnalysisModal] = useState(false);
+  const [analysisData, setAnalysisData] = useState(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const analysisCacheRef = useRef(null); // { fileId, mode, data }
+  React.useEffect(() => { analysisCacheRef.current = null; }, [activeFileId]);
 
   const genTimerRef = useRef(null);
   const aiAdviceRef = useRef(null);
@@ -350,7 +382,6 @@ function App() {
   useEffect(() => {
     if (activeFileId && !loading) {
       const doReanalyze = async () => {
-        setResult(null);
         setLoading(true);
         const fd = new FormData();
         fd.append('file_id', activeFileId);
@@ -701,10 +732,11 @@ function App() {
 
   // 选择历史（单击）
   // 将 AI 生成的图片添加到历史记录
-  const handleAddToHistory = async (imageUrl) => {
+  const handleAddToHistory = async (imageUrl, prompt) => {
     try {
       const fd = new FormData();
       fd.append('image_url', imageUrl);
+      if (prompt) fd.append('prompt', prompt);
       const res = await fetch(`${API_BASE}/api/history/from-generated`, { method: 'POST', body: fd });
       const data = await res.json();
       if (data.ok) {
@@ -740,7 +772,7 @@ function App() {
       const data = await fetch(`${API_BASE}/api/result/${item.file_id}`).then(r => r.json());
       setResult(data);
       setPreview(`${API_BASE}/${item.original}`);
-      setMode(null);
+      // 保留当前模式，不重置，避免触发重新分析
       setGenImages([]);
       setShowOverlay(true);
       setIsTextGenMode(false);
@@ -805,15 +837,27 @@ function App() {
     }
   };
 
-  // 图片加载后获取实际显示尺寸
-  const onImageLoad = () => {
-    if (imgRef.current) {
-      setImageDims({ w: imgRef.current.clientWidth, h: imgRef.current.clientHeight });
-    }
-  };
+  // 用 ResizeObserver 实时追踪图片渲染尺寸（替代 onImageLoad）
+  useEffect(() => {
+    const img = imgRef.current;
+    if (!img) return;
+    
+    const updateDims = () => {
+      setImageDims({ w: img.clientWidth, h: img.clientHeight });
+    };
+    
+    // 初始获取
+    updateDims();
+    
+    // 监听尺寸变化
+    const ro = new ResizeObserver(updateDims);
+    ro.observe(img);
+    
+    return () => ro.disconnect();
+  }, [preview]);
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ position: 'relative' }}>
+    <div className={`flex h-screen overflow-hidden`} style={{ position: 'relative', height: isMobile ? 'calc(var(--vh, 1vh) * 100)' : undefined }}>
       {/* 左侧栏 - 文件管理 */}
       <div className="w-64 bg-[#0d1117] border-r border-slate-800 flex flex-col" style={isMobile ? { position: 'fixed', top: 0, left: 0, height: '100%', zIndex: 40, transform: sidebarOpen ? 'translateX(0)' : 'translateX(-100%)', transition: 'transform 0.3s ease', boxShadow: sidebarOpen ? '4px 0 24px rgba(0,0,0,0.5)' : 'none', width: 280 } : {}}>
         {/* Logo */}
@@ -942,20 +986,15 @@ function App() {
       )}
 
       {/* 主区域 */}
-      <div className="flex-1 flex flex-col overflow-hidden" style={isMobile ? { width: '100%', minWidth: 0 } : {}}>
+      <div className="flex-1 flex flex-col overflow-y-auto" style={isMobile ? { width: '100%', minWidth: 0 } : { overflow: 'hidden' }}>
         {/* 顶部工具栏 */}
-        <div className="h-14 bg-[#0d1117] border-b border-slate-800 flex items-center justify-between px-6" style={isMobile ? { padding: '0 12px' } : {}}>
+        <div className="h-12 bg-[#0d1117] border-b border-slate-800 flex items-center justify-between px-4 flex-shrink-0" style={isMobile ? { padding: '0 8px', fontSize: '10px' } : {}}>
           <div className="flex items-center gap-4" style={isMobile ? { gap: 8 } : {}}>
-            {isMobile && (
-              <button onClick={() => setSidebarOpen(true)} style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', flexShrink: 0, cursor: 'pointer', color: '#94a3b8' }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
-              </button>
-            )}
             <span className="text-xs text-slate-500">区域模式</span>
-            <ModeSelector modes={modes} current={mode} onChange={(m) => { setResult(null); setMode(m); }} disabled={isTextGenMode} />
+            <ModeSelector modes={modes} current={mode} onChange={(m) => { setMode(m); }} disabled={isTextGenMode || !preview} />
           </div>
           <div className="flex items-center gap-3" style={isMobile ? { gap: 6, flexWrap: 'nowrap', overflow: 'auto' } : {}}>
-            {!isMobile && (
+            {true && (
             <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer">
               <input
                 type="checkbox"
@@ -970,11 +1009,30 @@ function App() {
             {aiEnabled && (
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => { if (!isTextGenMode) aiAdviceRef.current?.(); }}
-                  disabled={isTextGenMode}
-                  title="AI 分析"
+                  onClick={() => {
+                  if (isTextGenMode || !mode) return;
+                  if (isMobile) {
+                    // 移动端：弹窗显示
+                    setShowAnalysisModal(true);
+                    setAnalysisLoading(true);
+                    setAnalysisData(null);
+                    const fid = activeFileId || result?.file_id;
+                    if (fid) {
+                      fetch(`${API_BASE}/api/ai-advice/${fid}`)
+                        .then(r => r.json())
+                        .then(d => { setAnalysisData(d.advice || null); setAnalysisLoading(false); })
+                        .catch(() => { setAnalysisData('获取失败，请重试'); setAnalysisLoading(false); });
+                    } else {
+                      setAnalysisData('请先选择图片'); setAnalysisLoading(false);
+                    }
+                  } else {
+                    aiAdviceRef.current?.();
+                  }
+                }}
+                  disabled={isTextGenMode || !mode || !preview}
+                  title={!mode ? '请先选择区域模式' : 'AI 分析'}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all duration-200 ${
-                    isTextGenMode
+                    isTextGenMode || !mode
                       ? 'bg-slate-800/30 border-slate-700/30 text-slate-600 cursor-not-allowed'
                       : 'bg-gradient-to-br from-slate-700/60 to-slate-800/80 hover:from-blue-500/25 hover:to-blue-600/20 border border-slate-600/50 hover:border-blue-500/40 text-slate-200 hover:text-blue-300'
                   }`}
@@ -982,7 +1040,7 @@ function App() {
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
                   </svg>
-                  <span className={isMobile ? 'hidden' : ''}>AI 分析</span>
+                  <span className="">AI 分析</span>
                 </button>
                 {aiImageEnabled && (
                 <button
@@ -1013,7 +1071,7 @@ function App() {
                   <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                   </svg>
-                  <span className={isMobile ? 'hidden' : ''}>AI 文生图</span>
+                  <span className="">AI 文生图</span>
                 </button>
                 )}
                 {genLoading && (
@@ -1047,7 +1105,7 @@ function App() {
                 )}
                 <button
                   onClick={() => { if (!isTextGenMode) { loadPrompts(); setShowAiGenPanel(true); } }}
-                  disabled={genLoading || showAiGenPanel || isTextGenMode}
+                  disabled={genLoading || showAiGenPanel || isTextGenMode || !activeFileId}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all duration-200
                     disabled:opacity-50 disabled:cursor-not-allowed
                     bg-gradient-to-br from-slate-700/60 to-slate-800/80 hover:from-blue-500/25 hover:to-blue-600/20
@@ -1069,7 +1127,7 @@ function App() {
         </div>
 
         {/* 图片预览区 */}
-        <div className={`${preview ? 'flex-1 overflow-auto flex items-center justify-center p-8' : 'flex-1 flex flex-col px-8 pt-8 pb-0 min-h-0 overflow-hidden'} bg-[#080b12]`}>
+        <div className={`${preview ? `flex-1 overflow-y-auto ${isMobile ? 'flex flex-col p-2' : 'flex items-center justify-center p-8'}` : 'flex-1 flex flex-col px-8 pt-8 pb-0 min-h-0 overflow-hidden'} bg-[#080b12]`}>
           {!preview ? (
             <>
               {/* 主区域：有结果显示九宫格，无结果显示上传区 */}
@@ -1092,7 +1150,7 @@ function App() {
                       className={`drop-zone w-full h-full rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all duration-300 ease-out ${
                         dragOver ? 'drag-over' : ''
                       }`}
-                      style={{ minHeight: '200px' }}
+                      style={{ minHeight: isMobile ? '80px' : '200px' }}
                       onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
                       onDragLeave={() => setDragOver(false)}
                       onDrop={onDrop}
@@ -1109,7 +1167,7 @@ function App() {
               </div>
 
               {/* 比例和分辨率 - 文生图快捷面板 */}
-              <div className="flex-shrink-0 w-full px-4 pt-3" style={{ background: '#080b12' }}>
+              <div className="flex-shrink-0 w-full px-4 pt-3 pb-2" style={{ background: '#080b12' }}>
                 <div className="w-full max-w-4xl">
                   {/* 比例 + 方向 + 分辨率 — 单行排列 */}
                   <div className="flex items-center gap-1.5">
@@ -1169,7 +1227,7 @@ function App() {
               </div>
 
               {/* 文字输入框 - 始终在下方 */}
-              <div className="flex-shrink-0 w-full flex items-center justify-center" style={{ paddingBottom: 'env(safe-area-inset-bottom)', background: '#080b12' }}>
+              <div className="flex-shrink-0 w-full flex items-center justify-center" style={{ paddingBottom: isMobile ? 'max(env(safe-area-inset-bottom), 16px)' : 'env(safe-area-inset-bottom)', background: '#080b12' }}>
                 <div className="w-full max-w-4xl">
                   <div className="flex items-center gap-2 bg-[#0d1117] border border-slate-700/60 rounded-xl px-3 py-2.5 focus-within:border-blue-500/50 transition-colors">
                     <svg className="w-4 h-4 text-slate-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1221,16 +1279,16 @@ function App() {
             </>
 
           ) : (
-            <div className="flex items-center gap-6 transition-all duration-500 ease-out min-w-0" style={{ height: '100%' }}>
-              {/* 原始图片 — 左侧 */}
-              <div className="min-w-0 flex-1 overflow-hidden flex items-center justify-center" style={{ minHeight: 0 }}>
-                <div className="image-container relative">
+            <div className={`transition-all duration-500 ease-out min-w-0 ${isMobile ? 'flex flex-col gap-4 p-4' : 'flex items-center gap-6'}`} style={isMobile ? { height: 'auto' } : { height: '100%' }}>
+              {/* 原始图片 */}
+              <div className={`${isMobile ? 'w-full flex-shrink-0 flex items-center justify-center' : 'flex items-center justify-center min-w-0 flex-[2]'}`} style={isMobile ? {} : { minHeight: 0 }}>
+                <div className="image-container relative" style={{ display: 'inline-block' }}>
                   <img
                     ref={imgRef}
                     src={preview}
                     alt="preview"
-                    onLoad={onImageLoad}
                     className="rounded-lg shadow-2xl max-h-[70vh] max-w-full object-contain"
+                    style={isMobile ? { maxHeight: '25vh' } : {}}
                   />
                   <MeteringOverlay
                     points={result?.metering_points}
@@ -1240,12 +1298,24 @@ function App() {
                     imageHeight={imageDims.h}
                     visible={showOverlay && result && mode}
                   />
+
                 </div>
+
               </div>
 
-              {/* AI 生成结果网格 — 右侧 */}
+              {/* 提示词 — 桌面端原图旁 / 移动端大图下方 */}
+              {result?.prompt && (
+                <div className={`${isMobile ? 'w-full flex-shrink-0 px-2' : 'w-64 flex-shrink-0'}`}>
+                  <div className="bg-slate-800/30 rounded-xl p-3 border border-slate-700/50 h-full overflow-y-auto">
+                    <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1.5">提示词</div>
+                    <div className="text-xs text-slate-300 leading-relaxed break-words whitespace-pre-wrap">{result.prompt}</div>
+                  </div>
+                </div>
+              )}
+
+              {/* AI 生成结果网格 */}
               {(genLoading || genImages.length > 0) && (
-                <div className="flex-1 min-h-0 flex items-center justify-center">
+                <div className={`flex items-center justify-center ${isMobile ? 'w-full flex-shrink-0' : 'flex-1 min-h-0'}`}>
                   <AiGenGrid
                     images={genImages}
                     progress={genProgress}
@@ -1273,8 +1343,10 @@ function App() {
             <p className="text-xs text-slate-600">导入图片后点击分析</p>
           </div>
         ) : (
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {/* 整体信息 */}
+
+          <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+            {/* 测光数据 — 可滚动 */}
+            <div className="flex-1 p-4 space-y-4 overflow-y-auto min-h-0">
             <div className="bg-slate-800/30 rounded-xl p-3 border border-slate-700/50">
               <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">整体曝光</div>
               <div className="flex items-baseline gap-2">
@@ -1330,15 +1402,16 @@ function App() {
 
             {/* AI 智能建议（手动触发） */}
             {aiEnabled && (
-              <AiAdvice fileId={result.file_id} onRequest={aiAdviceRef} />
+              <AiAdvice fileId={result.file_id} mode={mode} onRequest={aiAdviceRef} />
             )}
 
-
+            </div>
           </div>
         )}
       </div>
 
       {showAdmin && ReactDOM.createPortal(<AdminPanel onClose={() => setShowAdmin(false)} />, document.getElementById('admin-root'))}
+      {showAnalysisModal && /*#__PURE__*/React.createElement(AnalysisModal, { show: showAnalysisModal, data: analysisData, loading: analysisLoading, onClose: () => setShowAnalysisModal(false) })}
       {showAiGenPanel && ReactDOM.createPortal(<AiGenPanel
         prompts={promptTemplates}
         customPrompts={customPrompts} setCustomPrompts={setCustomPrompts}
@@ -1476,7 +1549,7 @@ function AiGenPanel({ prompts, customPrompts, setCustomPrompts, selectedPromptNa
       : { width: 520, minWidth: 360, maxWidth: '95vw', maxHeight: '85vh' };
     const mgmtTitleStyle = isMobile ? { paddingTop: 'env(safe-area-inset-top, 0px)' } : {};
     return ReactDOM.createPortal(
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" style={isMobile ? { justifyContent: 'stretch', alignItems: 'stretch' } : {}} tabIndex={-1} onClick={preventClose}>
+      <div className="fixed inset-0 flex items-center justify-center bg-black/70 backdrop-blur-sm" style={Object.assign({ zIndex: 5001 }, isMobile ? { justifyContent: 'stretch', alignItems: 'stretch' } : {})} tabIndex={-1} onClick={preventClose}>
         <div className="w-[520px] min-w-[360px] max-w-[95vw] max-h-[85vh] rounded-2xl overflow-hidden bg-slate-900 border border-slate-700/50 shadow-2xl shadow-black/50 flex flex-col" style={mgmtContainerStyle} onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
           {/* 标题栏 */}
           <div className="flex items-center justify-between px-5 py-3 border-b border-slate-800/60">
@@ -1580,22 +1653,22 @@ function AiGenPanel({ prompts, customPrompts, setCustomPrompts, selectedPromptNa
     : { justifyContent: 'center', alignItems: 'center' };
   return ReactDOM.createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" style={outerStyle} tabIndex={-1} onClick={preventClose}>
-      <div className="relative w-[520px] max-w-[95vw] bg-slate-900 border border-slate-700/50 shadow-2xl shadow-black/50 flex flex-col" style={isMobile ? { width: '100%', height: '100%', borderRadius: 0, maxWidth: '100%' } : { borderRadius: '1rem', overflow: 'hidden' }} onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
+      <div className="relative bg-slate-900 flex flex-col" style={isMobile ? { position: 'fixed', top: 56, left: 0, right: 0, bottom: 0, width: '100%', height: '100%', borderRadius: 0, zIndex: 5001, overflow: 'hidden' } : { width: '520px', maxWidth: '95vw', borderRadius: '1rem', overflow: 'hidden', border: '1px solid rgba(51, 65, 85, 0.5)', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)' }} onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
         <div className="absolute -top-24 -right-24 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-24 -left-24 w-40 h-40 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="relative z-10 flex flex-col" style={{ minHeight: 0 }}>
           {/* 标题栏 */}
           <div className="flex-shrink-0 flex items-center justify-between px-6 pt-5 pb-3" style={isMobile ? { paddingTop: 'max(20px, env(safe-area-inset-top, 12px))' } : {}}>
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-emerald-500/25">
-                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/></svg>
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-emerald-500/25 flex-shrink-0">
+                <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/></svg>
               </div>
-              <div>
-                <h2 className="text-sm font-bold text-white tracking-wide">AI 生图设置</h2>
-                <p className="text-[10px] text-slate-500 mt-0.5">选择模板 · 调整风格 · 一键生成</p>
+              <div className="min-w-0 flex-1">
+                <h2 className="text-[13px] font-bold text-white tracking-wide">AI 生图设置</h2>
+                <p className="text-[13px] text-slate-200 mt-1 leading-snug">选择模板 · 调整风格 · 一键生成</p>
               </div>
             </div>
-            <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:text-white hover:bg-slate-800/80 transition-all">
+            <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:text-white hover:bg-slate-800/80 transition-all flex-shrink-0">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
           </div>
@@ -1915,7 +1988,7 @@ function AiGenGrid({ images, progress, loading, error, imageHeight, progressPct,
     if (!el) return;
     const updateSize = () => {
       const rect = el.getBoundingClientRect();
-      setGridDim(Math.max(100, Math.min(rect.width, rect.height)));
+      setGridDim(Math.max(100, isMobile ? rect.width : Math.min(rect.width, rect.height)));
     };
     updateSize();
     const ro = new ResizeObserver(updateSize);
@@ -1942,7 +2015,8 @@ function AiGenGrid({ images, progress, loading, error, imageHeight, progressPct,
     setAddingToHistory(true);
     setAddedToHistory(false);
     try {
-      const fileId = await onAddRef.current(previewImg.url);
+      var prompt = images[previewImg.index]?.prompt || result?.prompt || '';
+      const fileId = await onAddRef.current(previewImg.url, prompt);
       if (fileId) {
         setAddedToHistory(true);
       }
@@ -2070,39 +2144,50 @@ function AiGenGrid({ images, progress, loading, error, imageHeight, progressPct,
       {/* 悬浮大图预览 */}
       {previewImg && (
         <div
-          className="ai-gen-preview-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+          className="ai-gen-preview-overlay"
+          style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
           onClick={closePreview}
         >
           <div
-            className={`flex ${isMobile ? 'flex-col gap-0 p-0 rounded-none overflow-y-auto' : 'gap-4 p-4 rounded-2xl overflow-hidden'}`}
             onClick={e => e.stopPropagation()}
-            style={{ background: 'rgba(15,23,42,0.95)', maxWidth: '95vw', maxHeight: isMobile ? '100vh' : '90vh' }}
+            style={isMobile ? {
+              position: 'absolute', inset: 0,
+              display: 'flex', flexDirection: 'column',
+              background: 'rgba(15,23,42,0.95)',
+              overflow: 'hidden',
+            } : {
+              position: 'absolute', left: '2.5vw', top: '5vh', right: '2.5vw', bottom: '5vh',
+              display: 'flex', flexDirection: 'column',
+              background: 'rgba(15,23,42,0.95)', borderRadius: '16px', overflow: 'hidden',
+            }}
           >
-            {/* 图片区域 */}
-            <div className="ai-gen-preview-img-area" style={{ position: 'relative', flexShrink: 0 }}>
-              <img
-                src={previewImg.url}
-                alt={`生成图 ${previewImg.index + 1}`}
-                className="max-h-[80vh] w-auto object-contain rounded-xl"
-                style={{ maxWidth: isMobile ? '100vw' : '70vw', maxHeight: isMobile ? '60vh' : '80vh', borderRadius: isMobile ? 0 : undefined }}
-              />
-            </div>
-
-            {/* 提示词面板 — 移动端图片下方、桌面端右侧 */}
-            <div className="ai-gen-preview-prompt-card" style={{ minWidth: isMobile ? 'auto' : '200px', maxWidth: isMobile ? 'none' : '280px', alignSelf: 'stretch', background: 'rgba(30,41,59,0.9)', borderRadius: isMobile ? '0' : '12px', padding: isMobile ? '12px 16px' : '16px', border: isMobile ? 'none' : '1px solid rgba(100,116,139,0.2)', borderTop: isMobile ? '1px solid rgba(100,116,139,0.2)' : undefined, overflowY: 'auto' }}>
-              <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>提示词</div>
-              <div style={{ color: '#94a3b8', fontSize: '13px', lineHeight: '1.7', wordBreak: 'break-word' }}>
-                {images[previewImg.index]?.prompt || '无提示词信息'}
+            {/* 内容区域：图片+提示词，可滚动 */}
+            <div style={{ flex: '1 1 0', minHeight: 0, overflow: 'auto', display: 'flex', flexDirection: isMobile ? 'column' : 'row', gap: isMobile ? 0 : '16px', padding: isMobile ? 0 : '16px' }}>
+              {/* 图片区域 */}
+              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: '1 1 0', minHeight: 0, padding: '8px' }}>
+                <img
+                  src={previewImg.url}
+                  alt={`生成图 ${previewImg.index + 1}`}
+                  style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                />
               </div>
-              {images[previewImg.index]?.label && (
-                <div style={{ fontSize: '10px', color: '#475569', marginTop: '12px', borderTop: '1px solid rgba(100,116,139,0.15)', paddingTop: '8px' }}>
-                  标签：{images[previewImg.index].label}
+
+              {/* 提示词面板 */}
+              <div style={{ width: isMobile ? '100%' : '240px', flexShrink: 0, background: 'rgba(30,41,59,0.9)', padding: '16px', borderRadius: isMobile ? 0 : '8px', border: '1px solid rgba(100,116,139,0.2)', overflowY: 'auto' }}>
+                <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>提示词</div>
+                <div style={{ color: '#94a3b8', fontSize: '13px', lineHeight: '1.7', wordBreak: 'break-word' }}>
+                  {images[previewImg.index]?.prompt || '无提示词信息'}
                 </div>
-              )}
+                {images[previewImg.index]?.label && (
+                  <div style={{ fontSize: '10px', color: '#475569', marginTop: '12px', borderTop: '1px solid rgba(100,116,139,0.15)', paddingTop: '8px' }}>
+                    标签：{images[previewImg.index].label}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* 底部操作栏 */}
-            <div className={`flex items-center justify-between px-5 py-3 bg-slate-900/95 backdrop-blur-md border-t border-slate-800/60 ${isMobile ? 'w-full sticky bottom-0' : 'rounded-b-xl'}`}>
+            <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', background: 'rgba(15,23,42,0.98)', borderTop: '1px solid rgba(100,116,139,0.2)' }}>
               <span className="text-xs text-slate-400 font-mono">#{previewImg.index + 1} / {displayCount}</span>
               <div className="flex items-center gap-2">
                 <button
@@ -2178,24 +2263,35 @@ function AiGenGrid({ images, progress, loading, error, imageHeight, progressPct,
 
 
 // AI 智能建议（手动触发）
-function AiAdvice({ fileId, onRequest }) {
+function AiAdvice({ fileId, mode, onRequest }) {
   const [advice, setAdvice] = React.useState(null);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState(null);
+  const cacheRef = useRef(null);
 
   // 暴露请求方法给父组件
   React.useEffect(() => {
     if (onRequest) onRequest.current = fetchAdvice;
   }, [fileId]);
 
+  React.useEffect(() => { cacheRef.current = null; }, [fileId, mode]);
+
   const fetchAdvice = async () => {
     if (!fileId) return;
+    // 缓存命中
+    if (cacheRef.current && cacheRef.current.fileId === fileId && cacheRef.current.mode === mode && cacheRef.current.data) {
+      setAdvice(cacheRef.current.data);
+      setLoading(false);
+      setError(null);
+      return;
+    }
     setLoading(true);
     setAdvice(null);
     setError(null);
     try {
       const res = await fetch(`${API_BASE}/api/ai-advice/${fileId}`);
       const data = await res.json();
+      cacheRef.current = { fileId, mode, data: data.advice || null };
       setAdvice(data.advice || null);
     } catch (e) {
       setError('AI建议获取失败');
@@ -2229,6 +2325,61 @@ function AiAdvice({ fileId, onRequest }) {
         </div>
       )}
     </div>
+  );
+}
+
+function AnalysisModalBody({ loading, data }) {
+  if (loading) {
+    return /*#__PURE__*/React.createElement("div", { className: "flex items-center justify-center gap-2 text-sm text-slate-400 py-6" },
+      /*#__PURE__*/React.createElement("svg", { className: "animate-spin h-4 w-4", viewBox: "0 0 24 24", fill: "none" },
+        /*#__PURE__*/React.createElement("circle", { className: "opacity-25", cx: "12", cy: "12", r: "10", stroke: "currentColor", strokeWidth: "4" }),
+        /*#__PURE__*/React.createElement("path", { className: "opacity-75", fill: "currentColor", d: "M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" })
+      ),
+      "AI 正在分析中..."
+    );
+  }
+  if (data) {
+    var lines = data.split('\n').filter(function(l) { return l.trim(); });
+    return /*#__PURE__*/React.createElement("div", { className: "space-y-1.5 text-sm text-slate-200 leading-relaxed whitespace-pre-wrap" },
+      lines.map(function(line, i) {
+        return /*#__PURE__*/React.createElement("div", { key: i }, line.replace(/^\d+\.\s*/, '').replace(/\*\*/g, ''));
+      })
+    );
+  }
+  return /*#__PURE__*/React.createElement("div", { className: "text-sm text-slate-500 text-center py-6" }, "暂无分析结果");
+}
+
+function AnalysisModal({ show, data, loading, onClose }) {
+  if (!show) return null;
+  return ReactDOM.createPortal(
+    /*#__PURE__*/React.createElement("div", {
+      className: "fixed inset-0 z-[4000] flex items-center justify-center bg-black/70 backdrop-blur-sm",
+      onClick: onClose,
+      children: /*#__PURE__*/React.createElement("div", {
+        className: "relative w-[90vw] max-w-md mx-auto bg-slate-900 rounded-xl border border-slate-700/50 shadow-2xl overflow-hidden",
+        onClick: function(e) { e.stopPropagation(); },
+        children: [
+          /*#__PURE__*/React.createElement("div", {
+            className: "flex items-center justify-between px-5 py-3 border-b border-slate-700/50",
+            children: [
+              /*#__PURE__*/React.createElement("div", { className: "flex items-center gap-2" },
+                /*#__PURE__*/React.createElement("span", { className: "text-sm text-blue-400" }, "\uD83D\uDCA1"),
+                /*#__PURE__*/React.createElement("h3", { className: "text-sm font-semibold text-slate-200" }, "AI 分析结果")
+              ),
+              /*#__PURE__*/React.createElement("button", {
+                onClick: onClose,
+                className: "w-7 h-7 flex items-center justify-center rounded-lg bg-slate-800/80 text-slate-400 hover:text-slate-200 transition-colors",
+                children: "\u00D7"
+              })
+            ]
+          }),
+          /*#__PURE__*/React.createElement("div", { className: "p-5 max-h-[60vh] overflow-y-auto" },
+            /*#__PURE__*/React.createElement(AnalysisModalBody, { loading: loading, data: data })
+          )
+        ]
+      })
+    }),
+    document.getElementById('root')
   );
 }
 

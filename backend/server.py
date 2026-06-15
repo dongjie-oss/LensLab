@@ -630,8 +630,12 @@ async def analyze(
     # AI分析改为手动触发，不再自动调用
     analysis_data["ai_enabled"] = is_ai_enabled()
 
-    # 保存结果（自动添加 data_version）
+    # 保存结果（保留 prompt 等字段，避免被覆盖）
     analysis_path = RESULT_DIR / f"{file_id}.json"
+    if analysis_path.exists():
+        existing = load_data(analysis_path, lambda: {})
+        if existing.get("prompt"):
+            analysis_data["prompt"] = existing["prompt"]
     save_data(analysis_path, analysis_data)
 
     history = load_history()
@@ -670,7 +674,7 @@ def delete_history(file_id: str):
 
 
 @app.post("/api/history/from-generated")
-async def add_generated_to_history(image_url: str = Form(...)):
+async def add_generated_to_history(image_url: str = Form(...), prompt: str = Form(default="")):
     """将 AI 生成的图片添加到历史记录"""
     try:
         # 解析图片路径 — 处理各种 URL 格式
@@ -711,6 +715,26 @@ async def add_generated_to_history(image_url: str = Form(...)):
         if tmp and tmp.exists():
             tmp.unlink(missing_ok=True)
 
+        # 兜底：如果前端没传 prompt，尝试从已有 result.json 读取
+        if not prompt:
+            src_file_id = None
+            if image_url.startswith("/generated/"):
+                src_file_id = image_url.split("/")[-1].replace(".png", "")
+            if src_file_id and src_file_id != file_id:
+                alt_result = RESULT_DIR / f"{src_file_id}.json"
+                if alt_result.exists():
+                    alt_data = load_data(alt_result)
+                    if alt_data and alt_data.get("prompt"):
+                        prompt = alt_data["prompt"]
+            # 再试：从 URL 文件名推断
+            if not prompt:
+                import re as _re
+                match = _re.search(r"ai-generated-(\w+)", image_url)
+                if match:
+                    alt_data = load_data(RESULT_DIR / f"{match.group(1)}.json")
+                    if alt_data and alt_data.get("prompt"):
+                        prompt = alt_data["prompt"]
+
         result_data = {
             "file_id": file_id,
             "original_name": f"ai-generated-{file_id[:8]}.png",
@@ -723,6 +747,7 @@ async def add_generated_to_history(image_url: str = Form(...)):
             "histogram": [],
             "ai_enabled": False,
             "source": "text-to-image",
+            "prompt": prompt,
         }
         result_path = RESULT_DIR / f"{file_id}.json"
         save_data(result_path, result_data)
@@ -734,6 +759,7 @@ async def add_generated_to_history(image_url: str = Form(...)):
             "result": f"results/{file_id}.json",
             "filename": f"ai-generated-{file_id[:8]}.png",
             "timestamp": datetime.now().isoformat(),
+            "prompt": prompt,
         })
         save_history(history)
         cleanup_history()

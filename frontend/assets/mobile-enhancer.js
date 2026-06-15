@@ -96,42 +96,45 @@
     '/* HistoryItem 内文字（文件名+时间） */',
     '#mob-left .text-xs.text-slate-300.truncate { font-size:10px!important; display:block!important; color:#cbd5e1!important; }',
     '#mob-left .text-\[10px\].text-slate-500 { font-size:9px!important; display:block!important; }',
-    '/* AI 生图预览弹窗移动端全屏 — 必须覆盖 React inline styles */',
+    '/* AI 生图预览弹窗移动端全屏 — 紧凑布局，确保所有元素可见 */',
     'body.force-mobile .ai-gen-preview-overlay { position:fixed!important; inset:0!important; z-index:5000!important; }',
     'body.force-mobile .ai-gen-preview-overlay > div:first-child {',
     '  display:flex!important; flex-direction:column!important;',
     '  width:100%!important; max-width:100%!important;',
-    '  max-height:100vh!important; height:100vh!important;',
+    '  height:auto!important; max-height:100vh!important;',
     '  padding:0!important; margin:0!important;',
-    '  border-radius:0!important; background:#0f172a!important; overflow-y:auto!important;',
-    '  gap:0!important;',
+    '  border-radius:0!important; background:#0f172a!important;',
+    '  gap:0!important; overflow-y:auto!important; -webkit-overflow-scrolling:touch!important;',
     '}',
-    '/* 图片区 — 限制高度 */',
+    '/* 图片区 — 自然高度，内容驱动 */',
     'body.force-mobile .ai-gen-preview-img-area {',
     '  flex:0 0 auto!important; position:relative!important;',
-    '  max-height:55vh!important; height:auto!important;',
+    '  height:auto!important; max-height:none!important;',
     '  display:flex!important; align-items:center!important;',
     '  justify-content:center!important; background:#000!important; width:100%!important;',
     '  overflow:hidden!important;',
     '}',
     'body.force-mobile .ai-gen-preview-img-area img {',
-    '  max-height:55vh!important; max-width:100%!important; width:auto!important;',
+    '  max-width:100%!important; width:100%!important; height:auto!important;',
     '  border-radius:0!important; object-fit:contain!important;',
     '}',
-    '/* 提示词卡片 — 图片下方，填充剩余空间 */',
+    '/* 提示词卡片 — 高度自适应，文字多时滚动 */',
     'body.force-mobile .ai-gen-preview-prompt-card {',
-    '  flex:1 1 0%!important; min-width:0!important; max-width:none!important; width:100%!important;',
+    '  flex:0 0 auto!important; min-width:0!important; width:100%!important;',
+    '  max-height:30vh!important;',
     '  border-radius:0!important; border:none!important; border-top:1px solid rgba(100,116,139,0.2)!important;',
-    '  padding:12px 16px!important; overflow-y:auto!important;',
+    '  padding:10px 14px!important; overflow-y:auto!important;',
     '  -webkit-overflow-scrolling:touch!important;',
     '}',
-    '/* 底部操作栏 — flex 容器的最后一个子元素 */',
+    '/* 底部操作栏 — 固定 50px，粘性定位 */',
     'body.force-mobile .ai-gen-preview-overlay > div:first-child > div:last-child {',
     '  flex:0 0 auto!important;',
+    '  height:50px!important;',
     '  position:sticky!important; bottom:0!important; left:0!important; right:0!important;',
     '  width:100%!important; border-radius:0!important;',
     '  backdrop-filter:blur(12px)!important;',
-    '  z-index:10!important; background:rgba(15,23,42,0.95)!important;',
+    '  z-index:10!important; background:rgba(15,23,42,0.98)!important;',
+    '  padding:0 12px!important;',
     '}',
 
     /* 提示词管理弹窗移动端适配 */
@@ -191,7 +194,7 @@
     var bar = document.createElement('div');
     bar.id = 'mobile-topbar';
     bar.style.cssText = 'display:flex!important;position:fixed!important;top:0!important;left:0!important;right:0!important;height:'+BAR_H+'px!important;align-items:center!important;z-index:3000!important;background:#0d1117!important;border-bottom:1px solid #1e293b!important;padding:0 12px!important;box-sizing:border-box!important;flex-shrink:0!important;min-height:'+BAR_H+'px!important;max-height:'+BAR_H+'px!important;';
-    bar.innerHTML = '<button id="mob-btn-l" style="background:none;border:none;color:#e2e8f0;font-size:22px;padding:8px;cursor:pointer;line-height:1">☰</button><div style="flex:1;text-align:center;font-weight:600;font-size:15px;color:#e2e8f0;line-height:1">⚡ 镜头演算室</div><div style="display:flex;gap:4px"><button id="mob-btn-upload" style="display:flex;background:none;border:none;color:#94a3b8;font-size:18px;padding:8px;cursor:pointer;line-height:1;align-items:center" title="导入图片">📤</button><button id="mob-btn-admin" style="display:flex;background:none;border:none;color:#94a3b8;font-size:18px;padding:8px;cursor:pointer;line-height:1;align-items:center" title="后台管理">⚙️</button><button id="mob-btn-r" style="display:none;background:none;border:none;color:#e2e8f0;font-size:18px;padding:8px;cursor:pointer;line-height:1">📊</button></div>';
+    bar.innerHTML = '<div style="display:flex;align-items:center;gap:4px;flex:1;flex-shrink:0"><button id="mob-btn-l" style="background:none;border:none;color:#e2e8f0;font-size:22px;padding:8px;cursor:pointer;line-height:1">☰</button></div><div style="flex:0 0 auto;text-align:center;font-weight:600;font-size:15px;color:#e2e8f0;line-height:1;white-space:nowrap">⚡ 镜头演算室 <span id="mob-ver" style="font-size:11px;font-weight:400;color:#64748b;margin-left:4px">v' + (window.__version__ || "1.0.4") + '</span></div><div style="display:flex;align-items:center;gap:4px;flex:1;flex-shrink:0;justify-content:flex-end"><button id="mob-btn-upload" style="display:flex;background:none;border:none;color:#94a3b8;font-size:18px;padding:8px;cursor:pointer;line-height:1;align-items:center" title="导入图片">📤</button><button id="mob-btn-admin" style="display:flex;background:none;border:none;color:#94a3b8;font-size:18px;padding:8px;cursor:pointer;line-height:1;align-items:center" title="后台管理">⚙️</button><button id="mob-btn-r" style="display:none;background:none;border:none;color:#e2e8f0;font-size:18px;padding:8px;cursor:pointer;line-height:1">📊</button></div>';
     document.body.insertBefore(bar, document.body.firstChild);
     document.getElementById('mob-btn-l').onclick = function () { toggleDrawer('left'); };
     document.getElementById('mob-btn-r').onclick = function () { toggleDrawer('right'); };
@@ -241,7 +244,8 @@
   function listenHistoryClick(leftPanel) {
     leftPanel.addEventListener('click', function (e) {
       if (e.target.closest('.mob-close-btn')) return;
-      if (e.target.closest('button')) return;
+      /* 只拦截侧边栏级别的按钮，不拦截历史记录项内的按钮 */
+      if (e.target.closest('button') && !e.target.closest('.group')) return;
       /* 多选模式下不关闭抽屉（检测"退出"按钮是否存在） */
       var btns = leftPanel.querySelectorAll('button');
       for (var i = 0; i < btns.length; i++) {

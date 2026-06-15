@@ -7,7 +7,18 @@ const {
 
 // --- 移动端检测 Hook ---
 function useIsMobile(breakpoint = 768) {
-  // ?mobile=1 参数强制标记为移动端
+  // 动态设置 --vh（解决移动端浏览器栏遮挡问题）
+if (typeof window !== 'undefined') {
+  const updateVH = () => {
+    const vh = window.innerHeight * 0.01;
+    document.documentElement.style.setProperty('--vh', `${vh}px`);
+  };
+  updateVH();
+  window.addEventListener('resize', updateVH);
+  window.addEventListener('orientationchange', updateVH);
+}
+
+// ?mobile=1 参数强制标记为移动端
   const forceMobile = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('mobile') === '1';
   const [isMobile, setIsMobile] = useState(() => forceMobile || typeof window !== 'undefined' && window.innerWidth <= breakpoint);
   useEffect(() => {
@@ -90,40 +101,81 @@ function MeteringOverlay({
   imageHeight,
   visible
 }) {
-  if (!points || !visible) return null;
-  const scaleX = imageWidth / width;
-  const scaleY = imageHeight / height;
+  if (!points || !visible || !imageWidth || !imageHeight) return null;
+  const imgAspect = width / height;
+  const containerAspect = imageWidth / imageHeight;
+  let renderedW, renderedH, offsetX, offsetY;
+  if (imgAspect > containerAspect) {
+    renderedW = imageWidth;
+    renderedH = imageWidth / imgAspect;
+  } else {
+    renderedH = imageHeight;
+    renderedW = imageHeight * imgAspect;
+  }
+  offsetX = (imageWidth - renderedW) / 2;
+  offsetY = (imageHeight - renderedH) / 2;
+
+  // 根据格子数量自适应文字大小
+  const count = points.length;
+  const fontSize = count > 16 ? 8 : 9;
+  const lineHeight = count > 16 ? 10 : 12;
+  const dotSize = count > 16 ? 2 : 3;
+  const labelGap = count > 16 ? 4 : 5;
   return /*#__PURE__*/React.createElement("div", {
     className: "absolute inset-0 pointer-events-none"
   }, points.map((p, i) => {
-    const left = p.cx / width * imageWidth;
-    const top = p.cy / height * imageHeight;
+    const pxX = offsetX + p.cx / width * renderedW;
+    const pxY = offsetY + p.cy / height * renderedH;
     const color = evColor(p.ev);
     return /*#__PURE__*/React.createElement("div", {
       key: i,
-      className: "absolute transform -translate-x-1/2 -translate-y-1/2 metering-dot",
+      className: "absolute metering-dot",
       style: {
-        left,
-        top,
-        color
+        left: pxX,
+        top: pxY,
+        color,
+        transform: 'translate(-50%, -50%)'
       }
     }, /*#__PURE__*/React.createElement("div", {
-      className: "absolute w-4 h-[1px] bg-current/40 left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
-    }), /*#__PURE__*/React.createElement("div", {
-      className: "absolute w-[1px] h-4 bg-current/40 left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
-    }), /*#__PURE__*/React.createElement("div", {
-      className: "absolute left-1/2 -translate-x-1/2 whitespace-nowrap flex flex-col items-center gap-0.5",
+      className: "absolute bg-current/40 left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2",
       style: {
-        top: 18
+        width: count > 16 ? 10 : 14,
+        height: 1
+      }
+    }), /*#__PURE__*/React.createElement("div", {
+      className: "absolute bg-current/40 left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2",
+      style: {
+        width: 1,
+        height: count > 16 ? 10 : 14
+      }
+    }), /*#__PURE__*/React.createElement("div", {
+      className: "absolute whitespace-nowrap flex items-center",
+      style: {
+        top: labelGap,
+        left: '50%',
+        transform: 'translateX(-50%)'
       }
     }, /*#__PURE__*/React.createElement("span", {
-      className: "text-[10px] font-medium text-white/80 bg-black/60 px-1.5 py-0.5 rounded backdrop-blur-sm"
-    }, p.name), /*#__PURE__*/React.createElement("span", {
-      className: "text-xs font-bold mono px-1.5 py-0.5 rounded backdrop-blur-sm border",
       style: {
-        backgroundColor: `${color}33`,
-        color: color,
-        borderColor: `${color}55`
+        fontSize,
+        lineHeight: `${lineHeight}px`,
+        color: 'rgba(255,255,255,0.7)',
+        background: 'rgba(0,0,0,0.5)',
+        padding: '1px 4px',
+        borderRadius: 3,
+        backdropFilter: 'blur(4px)'
+      }
+    }, p.name), /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontSize,
+        fontWeight: 700,
+        lineHeight: `${lineHeight}px`,
+        color,
+        background: `${color}33`,
+        padding: '1px 4px',
+        borderRadius: 3,
+        border: `1px solid ${color}44`,
+        backdropFilter: 'blur(4px)'
       }
     }, p.ev_display, " EV")));
   }));
@@ -171,7 +223,7 @@ function ModeSelector({
       padding: '4px 8px',
       fontSize: 10
     } : {},
-    className: `px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${disabled ? 'bg-slate-800/30 text-slate-600 border border-slate-700/30 cursor-not-allowed' : current === m.key ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40' : 'bg-slate-800/50 text-slate-400 border border-slate-700/50 hover:border-slate-600'}`
+    className: `px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${disabled ? 'bg-slate-800/30 text-slate-600 border border-slate-700/30 cursor-not-allowed' : current === m.key ? 'bg-blue-500/20 text-blue-400 border border-blue-500/40' : 'bg-slate-800/50 text-slate-200 border border-slate-700/50 hover:border-slate-600'}`
   }, m.name, isMobile ? null : /*#__PURE__*/React.createElement("span", {
     className: "ml-1 text-xs opacity-60"
   }, m.rows, "\xD7", m.cols))));
@@ -216,7 +268,9 @@ function HistoryItem({
     className: "flex-1 min-w-0"
   }, /*#__PURE__*/React.createElement("div", {
     className: "text-xs text-slate-300 truncate"
-  }, item.filename), /*#__PURE__*/React.createElement("div", {
+  }, item.filename), item.prompt && /*#__PURE__*/React.createElement("div", {
+    className: "text-[10px] text-slate-500 truncate mt-0.5"
+  }, item.prompt), /*#__PURE__*/React.createElement("div", {
     className: "text-[10px] text-slate-500"
   }, new Date(item.timestamp).toLocaleString('zh-CN'))), !multiSelect && /*#__PURE__*/React.createElement("button", {
     onClick: e => {
@@ -310,10 +364,18 @@ function App() {
   const [textGenLoading, setTextGenLoading] = useState(false);
   const [textGenImages, setTextGenImages] = useState([]);
   const [textGenProgress, setTextGenProgress] = useState(0);
-  const [isTextGenMode, setIsTextGenMode] = useState(true);
+  const [isTextGenMode, setIsTextGenMode] = useState(false);
   const [textGenError, setTextGenError] = useState(null);
   const [textGenTotal, setTextGenTotal] = useState(9);
   const [textGenTaskId, setTextGenTaskId] = useState('');
+
+  // AI 分析弹窗（移动端）
+  const [showAnalysisModal, setShowAnalysisModal] = useState(false);
+  const [analysisData, setAnalysisData] = useState(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const analysisCacheRef = useRef(null); // { fileId, mode, data }
+  React.useEffect(() => { analysisCacheRef.current = null; }, [activeFileId]);
+
   const genTimerRef = useRef(null);
   const aiAdviceRef = useRef(null);
   const [multiSelect, setMultiSelect] = useState(false);
@@ -374,7 +436,6 @@ function App() {
   useEffect(() => {
     if (activeFileId && !loading) {
       const doReanalyze = async () => {
-        setResult(null);
         setLoading(true);
         const fd = new FormData();
         fd.append('file_id', activeFileId);
@@ -787,10 +848,11 @@ function App() {
 
   // 选择历史（单击）
   // 将 AI 生成的图片添加到历史记录
-  const handleAddToHistory = async imageUrl => {
+  const handleAddToHistory = async (imageUrl, prompt) => {
     try {
       const fd = new FormData();
       fd.append('image_url', imageUrl);
+      if (prompt) fd.append('prompt', prompt);
       const res = await fetch(`${API_BASE}/api/history/from-generated`, {
         method: 'POST',
         body: fd
@@ -828,7 +890,7 @@ function App() {
       const data = await fetch(`${API_BASE}/api/result/${item.file_id}`).then(r => r.json());
       setResult(data);
       setPreview(`${API_BASE}/${item.original}`);
-      setMode(null);
+      // 保留当前模式，不重置，避免触发重新分析
       setGenImages([]);
       setShowOverlay(true);
       setIsTextGenMode(false);
@@ -900,17 +962,27 @@ function App() {
     }
   };
 
-  // 图片加载后获取实际显示尺寸
-  const onImageLoad = () => {
-    if (imgRef.current) {
+  // 用 ResizeObserver 实时追踪图片渲染尺寸（替代 onImageLoad）
+  useEffect(() => {
+    const img = imgRef.current;
+    if (!img) return;
+    const updateDims = () => {
       setImageDims({
-        w: imgRef.current.clientWidth,
-        h: imgRef.current.clientHeight
+        w: img.clientWidth,
+        h: img.clientHeight
       });
-    }
-  };
+    };
+
+    // 初始获取
+    updateDims();
+
+    // 监听尺寸变化
+    const ro = new ResizeObserver(updateDims);
+    ro.observe(img);
+    return () => ro.disconnect();
+  }, [preview]);
   return /*#__PURE__*/React.createElement("div", {
-    className: "flex h-screen overflow-hidden",
+    className: `${isMobile ? 'min-h-dvh' : 'h-screen overflow-hidden'}`,
     style: {
       position: 'relative'
     }
@@ -918,7 +990,7 @@ function App() {
     className: "w-64 bg-[#0d1117] border-r border-slate-800 flex flex-col",
     style: isMobile ? {
       position: 'fixed',
-      top: 0,
+      top: 56,
       left: 0,
       height: '100%',
       zIndex: 40,
@@ -1031,13 +1103,13 @@ function App() {
       zIndex: 35
     }
   }), /*#__PURE__*/React.createElement("div", {
-    className: "flex-1 flex flex-col overflow-hidden",
+    className: `${isMobile ? 'flex-1 flex flex-col overflow-y-auto' : 'flex-1 flex flex-col overflow-hidden'}`,
     style: isMobile ? {
       width: '100%',
       minWidth: 0
     } : {}
   }, /*#__PURE__*/React.createElement("div", {
-    className: "h-14 bg-[#0d1117] border-b border-slate-800 flex items-center justify-between px-6",
+    className: `h-12 bg-[#0d1117] border-b border-slate-800 flex items-center justify-between ${isMobile ? 'px-4' : 'px-6'}`,
     style: isMobile ? {
       padding: '0 12px'
     } : {}
@@ -1046,40 +1118,16 @@ function App() {
     style: isMobile ? {
       gap: 8
     } : {}
-  }, isMobile && /*#__PURE__*/React.createElement("button", {
-    onClick: () => setSidebarOpen(true),
-    style: {
-      width: 32,
-      height: 32,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderRadius: 8,
-      background: 'rgba(255,255,255,0.05)',
-      border: '1px solid rgba(255,255,255,0.1)',
-      flexShrink: 0,
-      cursor: 'pointer',
-      color: '#94a3b8'
-    }
-  }, /*#__PURE__*/React.createElement("svg", {
-    width: "16",
-    height: "16",
-    viewBox: "0 0 24 24",
-    fill: "none",
-    stroke: "currentColor",
-    strokeWidth: "2"
-  }, /*#__PURE__*/React.createElement("path", {
-    d: "M3 12h18M3 6h18M3 18h18"
-  }))), /*#__PURE__*/React.createElement("span", {
+  }, /*#__PURE__*/React.createElement("span", {
     className: "text-xs text-slate-500"
   }, "\u533A\u57DF\u6A21\u5F0F"), /*#__PURE__*/React.createElement(ModeSelector, {
     modes: modes,
     current: mode,
     onChange: m => {
-      setResult(null);
       setMode(m);
+      analysisCacheRef.current = null;
     },
-    disabled: isTextGenMode
+    disabled: isTextGenMode || !preview
   })), /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-3",
     style: isMobile ? {
@@ -1087,7 +1135,7 @@ function App() {
       flexWrap: 'nowrap',
       overflow: 'auto'
     } : {}
-  }, !isMobile && /*#__PURE__*/React.createElement("label", {
+  }, true && /*#__PURE__*/React.createElement("label", {
     className: "flex items-center gap-2 text-xs text-slate-400 cursor-pointer"
   }, /*#__PURE__*/React.createElement("input", {
     type: "checkbox",
@@ -1098,11 +1146,36 @@ function App() {
     className: "flex items-center gap-2"
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => {
-      if (!isTextGenMode) aiAdviceRef.current?.();
+      if (isTextGenMode || !mode) return;
+      if (isMobile) {
+        var fid = activeFileId || (result ? result.file_id : null);
+        // 缓存命中检查：同一图片 + 同一模式
+        if (analysisCacheRef.current && analysisCacheRef.current.fileId === fid && analysisCacheRef.current.mode === mode) {
+          setShowAnalysisModal(true);
+          setAnalysisData(analysisCacheRef.current.data);
+          setAnalysisLoading(false);
+          return;
+        }
+        setShowAnalysisModal(true);
+        setAnalysisLoading(true);
+        setAnalysisData(null);
+        if (fid) {
+          fetch(API_BASE + '/api/ai-advice/' + fid).then(function(r) { return r.json(); }).then(function(d) {
+            var advice = d.advice || null;
+            analysisCacheRef.current = { fileId: fid, mode: mode, data: advice };
+            setAnalysisData(advice);
+            setAnalysisLoading(false);
+          }).catch(function() { setAnalysisData('获取失败，请重试'); setAnalysisLoading(false); });
+        } else {
+          setAnalysisData('请先选择图片'); setAnalysisLoading(false);
+        }
+      } else {
+        aiAdviceRef.current && aiAdviceRef.current();
+      }
     },
-    disabled: isTextGenMode,
-    title: "AI \u5206\u6790",
-    className: `flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all duration-200 ${isTextGenMode ? 'bg-slate-800/30 border-slate-700/30 text-slate-600 cursor-not-allowed' : 'bg-gradient-to-br from-slate-700/60 to-slate-800/80 hover:from-blue-500/25 hover:to-blue-600/20 border border-slate-600/50 hover:border-blue-500/40 text-slate-200 hover:text-blue-300'}`
+    disabled: isTextGenMode || !mode || !preview,
+    title: !mode ? '请先选择区域模式' : 'AI 分析',
+    className: `flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all duration-200 ${isTextGenMode || !mode ? 'bg-slate-800/30 border-slate-700/30 text-slate-600 cursor-not-allowed' : 'bg-gradient-to-br from-slate-700/60 to-slate-800/80 hover:from-blue-500/25 hover:to-blue-600/20 border border-slate-600/50 hover:border-blue-500/40 text-slate-200 hover:text-blue-300'}`
   }, /*#__PURE__*/React.createElement("svg", {
     className: "w-3.5 h-3.5",
     fill: "none",
@@ -1114,7 +1187,7 @@ function App() {
     strokeWidth: 2,
     d: "M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
   })), /*#__PURE__*/React.createElement("span", {
-    className: isMobile ? 'hidden' : ''
+    className: ""
   }, "AI \u5206\u6790")), aiImageEnabled && /*#__PURE__*/React.createElement("button", {
     onClick: () => {
       setIsTextGenMode(true);
@@ -1153,7 +1226,7 @@ function App() {
     strokeWidth: 2,
     d: "M13 10V3L4 14h7v7l9-11h-7z"
   })), /*#__PURE__*/React.createElement("span", {
-    className: isMobile ? 'hidden' : ''
+    className: ""
   }, "AI \u6587\u751F\u56FE")), genLoading && /*#__PURE__*/React.createElement("button", {
     onClick: cancelGeneration,
     className: "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-gradient-to-br from-red-500/20 to-red-600/30 border border-red-500/40 text-red-300 hover:from-red-500/30 hover:to-red-600/40 transition-all"
@@ -1206,7 +1279,7 @@ function App() {
         setShowAiGenPanel(true);
       }
     },
-    disabled: genLoading || showAiGenPanel || isTextGenMode,
+    disabled: genLoading || showAiGenPanel || isTextGenMode || !activeFileId,
     className: "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed bg-gradient-to-br from-slate-700/60 to-slate-800/80 hover:from-blue-500/25 hover:to-blue-600/20 border border-slate-600/50 hover:border-blue-500/40 text-slate-200 hover:text-blue-300"
   }, genLoading ? /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium bg-gradient-to-br from-red-500/20 to-red-600/30 border border-red-500/40 text-red-300"
@@ -1236,12 +1309,12 @@ function App() {
     strokeWidth: 2,
     d: "M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
   })), "AI \u751F\u56FE"))))), /*#__PURE__*/React.createElement("div", {
-    className: `${preview ? 'flex-1 overflow-auto flex items-center justify-center p-8' : 'flex-1 flex flex-col px-8 pt-8 pb-0 min-h-0 overflow-hidden'} bg-[#080b12]`
+    className: `${preview ? `flex-1 overflow-y-auto ${isMobile ? 'flex flex-col p-2' : 'flex items-center justify-center p-8'}` : 'flex-1 flex flex-col px-8 pt-8 pb-0 min-h-0 overflow-hidden'} bg-[#080b12]`
   }, !preview ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "flex-1 flex flex-col  min-h-0 w-full"
   }, textGenLoading || textGenImages.length > 0 ? /*#__PURE__*/React.createElement("div", {
     "data-ai-gen-grid": true,
-    className: "w-full flex-1 min-h-0"
+    className: `w-full ${isMobile ? 'min-h-0' : 'flex-1 min-h-0'}`
   }, /*#__PURE__*/React.createElement(AiGenGrid, {
     images: textGenImages,
     progress: textGenProgress,
@@ -1255,7 +1328,7 @@ function App() {
   }, /*#__PURE__*/React.createElement("div", {
     className: `drop-zone w-full h-full rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-all duration-300 ease-out ${dragOver ? 'drag-over' : ''}`,
     style: {
-      minHeight: '200px'
+      minHeight: isMobile ? '80px' : '200px'
     },
     onDragOver: e => {
       e.preventDefault();
@@ -1279,7 +1352,7 @@ function App() {
   }, "\u62D6\u62FD\u56FE\u7247\u5230\u6B64\u5904\uFF0C\u6216\u70B9\u51FB\u9009\u62E9"), /*#__PURE__*/React.createElement("p", {
     className: "text-slate-600 text-xs mt-2"
   }, "JPG / PNG")))), /*#__PURE__*/React.createElement("div", {
-    className: "flex-shrink-0 w-full px-4 pt-3",
+    className: `flex-shrink-0 w-full px-4 pt-3 ${isMobile ? "pb-4" : ""}`,
     style: {
       background: '#080b12'
     }
@@ -1384,23 +1457,29 @@ function App() {
     height: "12",
     rx: "2"
   })), "\u505C\u6B62")))))) : /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center gap-6 transition-all duration-500 ease-out min-w-0",
-    style: {
+    className: `transition-all duration-500 ease-out min-w-0 ${isMobile ? 'flex flex-col gap-4 p-4' : 'flex items-center gap-6'}`,
+    style: isMobile ? {
+      height: 'auto'
+    } : {
       height: '100%'
     }
   }, /*#__PURE__*/React.createElement("div", {
-    className: "min-w-0 flex-1 overflow-hidden flex items-center justify-center",
-    style: {
+    className: `${isMobile ? 'w-full flex-shrink-0 flex items-center justify-center' : 'overflow-hidden flex items-center justify-center min-w-0 flex-1'}`,
+    style: isMobile ? {} : {
       minHeight: 0
     }
   }, /*#__PURE__*/React.createElement("div", {
-    className: "image-container relative"
+    className: "image-container relative",
+    style: {
+      display: 'inline-block'
+    }
   }, /*#__PURE__*/React.createElement("img", {
     ref: imgRef,
     src: preview,
     alt: "preview",
-    onLoad: onImageLoad,
-    className: "rounded-lg shadow-2xl max-h-[70vh] max-w-full object-contain"
+    className: "rounded-lg shadow-2xl max-h-[70vh] max-w-full object-contain",
+    style: isMobile ? { maxHeight: '25vh' } : {},
+    style: isMobile ? { maxHeight: '25vh' } : {}
   }), /*#__PURE__*/React.createElement(MeteringOverlay, {
     points: result?.metering_points,
     width: result?.width,
@@ -1408,8 +1487,16 @@ function App() {
     imageWidth: imageDims.w,
     imageHeight: imageDims.h,
     visible: showOverlay && result && mode
-  }))), (genLoading || genImages.length > 0) && /*#__PURE__*/React.createElement("div", {
-    className: "flex-1 min-h-0 flex items-center justify-center"
+  }))), (isMobile && result?.prompt) ? /*#__PURE__*/React.createElement("div", {
+    className: "w-full flex-shrink-0 px-2"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "bg-slate-800/30 rounded-xl p-3 border border-slate-700/50"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "text-[10px] text-slate-500 uppercase tracking-wider mb-1.5"
+  }, "提示词"), /*#__PURE__*/React.createElement("div", {
+    className: "text-xs text-slate-300 leading-relaxed break-words whitespace-pre-wrap"
+  }, result.prompt))) : null, (genLoading || genImages.length > 0) && /*#__PURE__*/React.createElement("div", {
+    className: `flex items-center justify-center ${isMobile ? 'w-full flex-shrink-0' : 'flex-1 min-h-0'}`
   }, /*#__PURE__*/React.createElement(AiGenGrid, {
     images: genImages,
     progress: genProgress,
@@ -1484,7 +1571,9 @@ function App() {
     onRequest: aiAdviceRef
   }))), showAdmin && ReactDOM.createPortal(/*#__PURE__*/React.createElement(AdminPanel, {
     onClose: () => setShowAdmin(false)
-  }), document.getElementById('admin-root')), showAiGenPanel && ReactDOM.createPortal(/*#__PURE__*/React.createElement(AiGenPanel, {
+  }), document.getElementById('admin-root')), showAnalysisModal && AnalysisModal({
+    show: showAnalysisModal, data: analysisData, loading: analysisLoading, onClose: function() { setShowAnalysisModal(false); }
+  }, document.getElementById('root')), showAiGenPanel && ReactDOM.createPortal(/*#__PURE__*/React.createElement(AiGenPanel, {
     prompts: promptTemplates,
     customPrompts: customPrompts,
     setCustomPrompts: setCustomPrompts,
@@ -1704,11 +1793,11 @@ function AiGenPanel({
       paddingTop: 'env(safe-area-inset-top, 0px)'
     } : {};
     return ReactDOM.createPortal(/*#__PURE__*/React.createElement("div", {
-      className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm",
-      style: isMobile ? {
+      className: "fixed inset-0 flex items-center justify-center bg-black/70 backdrop-blur-sm",
+      style: Object.assign({ zIndex: 5001 }, isMobile ? {
         justifyContent: 'stretch',
         alignItems: 'stretch'
-      } : {},
+      } : {}),
       tabIndex: -1,
       onClick: preventClose
     }, /*#__PURE__*/React.createElement("div", {
@@ -1877,20 +1966,30 @@ function AiGenPanel({
     alignItems: 'center'
   };
   return ReactDOM.createPortal(/*#__PURE__*/React.createElement("div", {
-    className: "fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm",
-    style: outerStyle,
+    className: "fixed inset-0 flex items-center justify-center bg-black/70 backdrop-blur-sm",
+    style: Object.assign({ zIndex: 5001 }, outerStyle),
     tabIndex: -1,
     onClick: preventClose
   }, /*#__PURE__*/React.createElement("div", {
-    className: "relative w-[520px] max-w-[95vw] bg-slate-900 border border-slate-700/50 shadow-2xl shadow-black/50 flex flex-col",
+    className: "relative bg-slate-900 flex flex-col",
     style: isMobile ? {
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
       width: '100%',
       height: '100%',
       borderRadius: 0,
-      maxWidth: '100%'
-    } : {
-      borderRadius: '1rem',
+      zIndex: 5001,
       overflow: 'hidden'
+    } : {
+      width: '520px',
+      maxWidth: '95vw',
+      borderRadius: '1rem',
+      overflow: 'hidden',
+      border: '1px solid rgba(51, 65, 85, 0.5)',
+      boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
     },
     onClick: e => e.stopPropagation(),
     onMouseDown: e => e.stopPropagation()
@@ -1909,11 +2008,11 @@ function AiGenPanel({
       paddingTop: 'max(20px, env(safe-area-inset-top, 12px))'
     } : {}
   }, /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center gap-3"
+    className: "flex items-center gap-2 min-w-0 flex-1"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-emerald-500/25"
+    className: "w-7 h-7 rounded-lg bg-gradient-to-br from-emerald-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-emerald-500/25 flex-shrink-0"
   }, /*#__PURE__*/React.createElement("svg", {
-    className: "w-4 h-4 text-white",
+    className: "w-3.5 h-3.5 text-white",
     fill: "none",
     stroke: "currentColor",
     viewBox: "0 0 24 24"
@@ -1922,13 +2021,15 @@ function AiGenPanel({
     strokeLinejoin: "round",
     strokeWidth: 2,
     d: "M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"
-  }))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h2", {
-    className: "text-sm font-bold text-white tracking-wide"
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "flex-1 min-w-0"
+  }, /*#__PURE__*/React.createElement("h2", {
+    className: "text-[15px] font-bold text-white tracking-wide"
   }, "AI \u751F\u56FE\u8BBE\u7F6E"), /*#__PURE__*/React.createElement("p", {
-    className: "text-[10px] text-slate-500 mt-0.5"
+    className: "text-[13px] text-slate-300 mt-1 leading-snug"
   }, "\u9009\u62E9\u6A21\u677F \xB7 \u8C03\u6574\u98CE\u683C \xB7 \u4E00\u952E\u751F\u6210"))), /*#__PURE__*/React.createElement("button", {
     onClick: onClose,
-    className: "w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:text-white hover:bg-slate-800/80 transition-all"
+    className: "w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:text-white hover:bg-slate-800/80 transition-all flex-shrink-0"
   }, /*#__PURE__*/React.createElement("svg", {
     className: "w-4 h-4",
     fill: "none",
@@ -2267,7 +2368,7 @@ function AiGenGrid({
     if (!el) return;
     const updateSize = () => {
       const rect = el.getBoundingClientRect();
-      setGridDim(Math.max(100, Math.min(rect.width, rect.height)));
+      setGridDim(Math.max(100, isMobile ? rect.width : Math.min(rect.width, rect.height)));
     };
     updateSize();
     const ro = new ResizeObserver(updateSize);
@@ -2294,7 +2395,8 @@ function AiGenGrid({
     setAddingToHistory(true);
     setAddedToHistory(false);
     try {
-      const fileId = await onAddRef.current(previewImg.url);
+      var prompt = images[previewImg.index]?.prompt || '';
+      const fileId = await onAddRef.current(previewImg.url, prompt);
       if (fileId) {
         setAddedToHistory(true);
       }
@@ -2422,42 +2524,71 @@ function AiGenGrid({
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-xs text-red-400"
   }, error))), previewImg && /*#__PURE__*/React.createElement("div", {
-    className: "ai-gen-preview-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm",
+    className: "ai-gen-preview-overlay",
+    style: {
+      position: 'fixed',
+      inset: 0,
+      zIndex: 50,
+      background: 'rgba(0,0,0,0.7)',
+      backdropFilter: 'blur(4px)'
+    },
     onClick: closePreview
   }, /*#__PURE__*/React.createElement("div", {
-    className: `flex ${isMobile ? 'flex-col gap-0 p-0 rounded-none overflow-y-auto' : 'gap-4 p-4 rounded-2xl overflow-hidden'}`,
     onClick: e => e.stopPropagation(),
-    style: {
+    style: isMobile ? {
+      position: 'absolute',
+      inset: 0,
+      display: 'flex',
+      flexDirection: 'column',
       background: 'rgba(15,23,42,0.95)',
-      maxWidth: '95vw',
-      maxHeight: isMobile ? '100vh' : '90vh'
+      overflow: 'hidden'
+    } : {
+      position: 'absolute',
+      left: '2.5vw',
+      top: '5vh',
+      right: '2.5vw',
+      bottom: '5vh',
+      display: 'flex',
+      flexDirection: 'column',
+      background: 'rgba(15,23,42,0.95)',
+      borderRadius: '16px',
+      overflow: 'hidden'
     }
   }, /*#__PURE__*/React.createElement("div", {
-    className: "ai-gen-preview-img-area",
     style: {
-      position: 'relative',
-      flexShrink: 0
+      flex: '1 1 0',
+      minHeight: 0,
+      overflow: 'auto',
+      display: 'flex',
+      flexDirection: isMobile ? 'column' : 'row',
+      gap: isMobile ? 0 : '16px',
+      padding: isMobile ? 0 : '16px'
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      flex: '1 1 0',
+      minHeight: 0,
+      padding: '8px'
     }
   }, /*#__PURE__*/React.createElement("img", {
     src: previewImg.url,
     alt: `生成图 ${previewImg.index + 1}`,
-    className: "max-h-[80vh] w-auto object-contain rounded-xl",
     style: {
-      maxWidth: isMobile ? '100vw' : '70vw',
-      maxHeight: isMobile ? '60vh' : '80vh',
-      borderRadius: isMobile ? 0 : undefined
+      maxWidth: '100%',
+      maxHeight: '100%',
+      objectFit: 'contain'
     }
   })), /*#__PURE__*/React.createElement("div", {
-    className: "ai-gen-preview-prompt-card",
     style: {
-      minWidth: isMobile ? 'auto' : '200px',
-      maxWidth: isMobile ? 'none' : '280px',
-      alignSelf: 'stretch',
+      width: isMobile ? '100%' : '240px',
+      flexShrink: 0,
       background: 'rgba(30,41,59,0.9)',
-      borderRadius: isMobile ? '0' : '12px',
-      padding: isMobile ? '12px 16px' : '16px',
-      border: isMobile ? 'none' : '1px solid rgba(100,116,139,0.2)',
-      borderTop: isMobile ? '1px solid rgba(100,116,139,0.2)' : undefined,
+      padding: '16px',
+      borderRadius: isMobile ? 0 : '8px',
+      border: '1px solid rgba(100,116,139,0.2)',
       overflowY: 'auto'
     }
   }, /*#__PURE__*/React.createElement("div", {
@@ -2484,8 +2615,16 @@ function AiGenGrid({
       borderTop: '1px solid rgba(100,116,139,0.15)',
       paddingTop: '8px'
     }
-  }, "\u6807\u7B7E\uFF1A", images[previewImg.index].label)), /*#__PURE__*/React.createElement("div", {
-    className: `flex items-center justify-between px-5 py-3 bg-slate-900/95 backdrop-blur-md border-t border-slate-800/60 ${isMobile ? 'w-full sticky bottom-0' : 'rounded-b-xl'}`
+  }, "\u6807\u7B7E\uFF1A", images[previewImg.index].label))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flexShrink: 0,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: '12px 20px',
+      background: 'rgba(15,23,42,0.98)',
+      borderTop: '1px solid rgba(100,116,139,0.2)'
+    }
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-xs text-slate-400 font-mono"
   }, "#", previewImg.index + 1, " / ", displayCount), /*#__PURE__*/React.createElement("div", {
@@ -2630,5 +2769,52 @@ function AiAdvice({
 }
 
 // 提示词管理面板（两步式 UI：选类型 → 列表 + 编辑）
+
+// AnalysisModalBody 组件：分析弹窗内容
+function AnalysisModalBody(props) {
+  var loading = props.loading;
+  var data = props.data;
+  if (loading) {
+    return /*#__PURE__*/React.createElement("div", { className: "flex items-center justify-center gap-2 text-sm text-slate-400 py-6" },
+      /*#__PURE__*/React.createElement("svg", { className: "animate-spin h-4 w-4", viewBox: "0 0 24 24", fill: "none" },
+        /*#__PURE__*/React.createElement("circle", { className: "opacity-25", cx: "12", cy: "12", r: "10", stroke: "currentColor", strokeWidth: "4" }),
+        /*#__PURE__*/React.createElement("path", { className: "opacity-75", fill: "currentColor", d: "M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" })
+      ),
+      "AI \u6B63\u5728\u5206\u6790\u4E2D..."
+    );
+  }
+  if (data) {
+    var lines = data.split('\n').filter(function(l) { return l.trim(); });
+    return /*#__PURE__*/React.createElement("div", { className: "space-y-1.5 text-sm text-slate-200 leading-relaxed whitespace-pre-wrap" },
+      lines.map(function(line, i) {
+        return /*#__PURE__*/React.createElement("div", { key: i }, line.replace(/^\d+\.\s*/, '').replace(/\*\*/g, ''));
+      })
+    );
+  }
+  return /*#__PURE__*/React.createElement("div", { className: "text-sm text-slate-500 text-center py-6" }, "\u6682\u65E0\u5206\u6790\u7ED3\u679C");
+}
+
+// AnalysisModal 组件：移动端分析弹窗
+function AnalysisModal(props) {
+  var show = props.show;
+  var data = props.data;
+  var loading = props.loading;
+  var onClose = props.onClose;
+  if (!show) return null;
+  return ReactDOM.createPortal(/*#__PURE__*/React.createElement("div", {
+    style: { position: "fixed", inset: 0, zIndex: 4000, background: "rgb(15,23,42)" },
+    children: [
+      /*#__PURE__*/React.createElement("button", {
+        onClick: onClose,
+        style: { position: "fixed", top: 12, right: 12, zIndex: 4001, width: 40, height: 40, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "9999px", background: "rgba(30,41,59,0.9)", color: "rgb(203,213,225)", fontSize: 24 },
+        children: "\u00D7"
+      }),
+      /*#__PURE__*/React.createElement("div", {
+        style: { paddingTop: 60, paddingBottom: 20, paddingLeft: 20, paddingRight: 20, height: "100%", overflowY: "auto", boxSizing: "border-box" },
+        children: /*#__PURE__*/React.createElement(AnalysisModalBody, { loading: loading, data: data })
+      })
+    ]
+  }), document.getElementById('root'));
+}
 
 ReactDOM.createRoot(document.getElementById('root')).render(/*#__PURE__*/React.createElement(App, null));

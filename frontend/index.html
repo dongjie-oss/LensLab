@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>镜头演算室 · LensLab</title>
 <script src="assets/react.production.min.js"></script>
 <script src="assets/react-dom.production.min.js"></script>
@@ -74,23 +74,28 @@
     const url = new URL(window.location.href);
     const forceDesktop = url.searchParams.get('desktop') === '1';
     const forceMobile = url.searchParams.get('mobile') === '1';
-    const isMobile = window.innerWidth < 1024;
+    // 优先用 UA 判断移动设备，其次用屏幕宽度
+    const ua = navigator.userAgent || '';
+    const isMobileUA = /Mobi|Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua);
+    const isMobileScreen = window.innerWidth < 1024;
+    const isMobile = isMobileUA || isMobileScreen;
 
     // admin panel is same for all
     document.write('<scr' + 'ipt src="assets/admin-panel.compiled.js?v=1780819828"><\/script>');
 
     let mainSrc;
     if (forceDesktop) {
-      mainSrc = 'assets/app.compiled.js?v=1780819828';
+      mainSrc = 'assets/app.compiled.js?v=1780823500';
     } else if (forceMobile || isMobile) {
-      mainSrc = 'assets/app.mobile.js?v=1780819828';
+      window.__LENSLAB_MOBILE__ = true; // 标记移动端，React 会读取
+      mainSrc = 'assets/app.mobile.js?v=1780823200';
     } else {
-      mainSrc = 'assets/app.compiled.js?v=1780819828';
+      mainSrc = 'assets/app.compiled.js?v=1780823500';
     }
     document.write('<scr' + 'ipt src="' + mainSrc + '"><\/script>');
   })();
 </script>
 <!-- Mobile Enhancer: 响应式布局 + 触摸支持，不修改原始 React 代码 -->
-<script src="assets/mobile-enhancer.js?v=2"></script>
+<script src="assets/mobile-enhancer.js?v=4"></script>
 </body>
 </html>
