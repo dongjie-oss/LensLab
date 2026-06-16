@@ -1,300 +1,160 @@
-# ⚡ 镜头演算室 · LensLab
+# 镜头演算室 · LensLab
 
-> 专业级 Web 区域曝光分析工具 — AI 生图 · 精准测光 · 大师风范
+> 📷 摄影区域曝光分析 + AI 智能生图工具
 
-<p align="center">
-  <img src="current-ui.png" alt="LensLab UI" width="700"/>
-</p>
-
-[![Version](https://img.shields.io/badge/version-1.0.0-blue?style=flat-square)](https://github.com/dongjie-oss/exposure-lab)
-[![Python](https://img.shields.io/badge/Python-3.11+-green?style=flat-square)](https://python.org)
-[![FastAPI](https://img.shields.io/badge/FastAPI-Latest-009688?style=flat-square)](https://fastapi.tiangolo.com)
-[![React](https://img.shields.io/badge/React-18-61DAFB?style=flat-square)](https://reactjs.org)
-[![License](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
+[![GitHub release](https://img.shields.io/github/v/release/dongjie-oss/LensLab)](https://github.com/dongjie-oss/LensLab/releases)
+[![Docker](https://img.shields.io/badge/docker-ready-blue)](https://github.com/dongjie-oss/LensLab#docker-部署)
 
 ---
 
-## 📋 目录
+## 项目简介
 
-- [功能特性](#功能特性)
-- [截图一览](#截图一览)
-- [AI 生图](#ai-生图)
-- [区域测光模式](#区域测光模式)
-- [适用场景](#适用场景)
-- [快速启动](#快速启动)
-- [Docker 部署](#docker-部署)
-- [项目结构](#项目结构)
-- [技术栈](#技术栈)
-- [版本管理](#版本管理)
-- [开发](#开发)
-- [License](#license)
+**镜头演算室 LensLab** 是一款基于 Web 的摄影区域曝光分析工具，结合 AI 智能分析与生图能力，帮助摄影师精准判断曝光情况。
 
----
+### 核心功能
 
-## ✨ 功能特性
+| 功能 | 说明 |
+|------|------|
+| 🔍 区域曝光分析 | 上传照片 → 可视化 10 区域测光 → 判断曝光状态 |
+| 📊 AI 图表分析 | 直方图 / 分区亮度 AI 自动解读 |
+| 🎨 AI 智能生图 | 18 种预设风格模板（人像×9 + 通用×9）+ 自定义提示词生图 |
+| 🤖 AI 内容识别 | 自动识别图片内容类型（人像/风景/静物），匹配对应生图策略 |
+| 🖼️ 大图预览 | 预览图旁完整展示当前图片的提示词和标签 |
+| 🧹 系统管理 | AI 生成图片自动/手动清理 |
+| ⚙️ 设置面板 | 模型配置、版本查看、一键检查更新 |
 
-### 🎯 区域曝光分析
+### 后台管理
 
-- **📸 图片导入** — 支持 JPG / PNG，拖拽上传，一键粘贴
-- **🎯 6种区域测光模式** — 九宫格 / 十六宫格 / 二十五宫格 / 中心点 / 重点测光 / 三分法
-- **📊 智能曝光指数** — 每区域独立 EV 值（-3EV ~ +3EV），128灰为基准
-- **🗺️ 实时叠加显示** — 测光点直接标注在原图上，十字线 + 区域名称 + EV 值
-- **📈 亮度直方图** — 全局亮度分布可视化
-- **💡 曝光评估** — 智能分析过曝/欠曝/光比，给出拍摄建议
-- **🗂️ 历史记录** — 自动保存分析结果，方便前后对比
+- 入口：应用左上角齿轮图标（⚙️ 设置面板）
+- 默认账号：`admin`
+- 默认密码：`admin`
+- 首次登录后请及时修改密码
 
-### 🤖 AI 生图
+### 技术栈
 
-- **🎨 九宫格 AI 生成** — 基于选中 9 宫格区域，AI 批量生成不同风格的创意图片
-- **📝 自定义提示词** — 支持提示词模板的多选和 CRUD 管理
-- **🌐 全局风格** — 单选的全局风格控制，统一整体视觉效果
-- **🔁 生成类似图片** — 基于生成结果再扩散，获得更多相似创意
-- **🧩 智能九宫格策略** — 根据提示词 + 全局风格 + 类似图片的组合，自动决定生成数量和布局
-
-### 🛠️ 管理面板
-
-- **🔐 管理员登录** — 安全的后台管理入口
-- **🤖 AI 配置** — 在线管理 API Key、模型、Endpoint
-- **📋 提示词管理** — CRUD 操作提示词模板（提示词 / 全局风格两类）
-- **🔄 版本检查** — 自动检测 ACR 仓库最新版本，提醒更新
+- **后端**：Python 3.11 + FastAPI + Pillow + Uvicorn
+- **前端**：原生 JS（编译为单文件，无需 Node 运行时）
+- **AI**：支持 OpenAI 兼容 API（DeepSeek、Kimi、OpenAI 等）
+- **部署**：Docker + Docker Compose 一键启动
+- **端口**：`8765`（所有部署方式统一）
 
 ---
 
-## 📸 截图一览
+## 部署
 
-| 登录页 | 管理面板 | 版本检查 |
-|--------|----------|----------|
-| ![登录](admin-login.png) | ![管理](admin-ai.png) | ![版本](admin-version.png) |
-
-| AI 生图按钮 | 生成面板 | 生成结果 |
-|-------------|----------|----------|
-| ![AI 按钮](ai-buttons.png) | ![AI 面板](final-styles.png) | ![结果](final-check.png) |
-
----
-
-## 🤖 AI 生图
-
-### 九宫格生成策略
-
-| 场景 | 生成数量 | 说明 |
-|------|----------|------|
-| 什么都不选 | 9 张 | 9 种默认风格，填满九宫格 |
-| 只选全局风格 | 1 张 | 大图展示占满 9 格 |
-| 全局 + 类似图片（无提示词） | 9 张 | 全局风格 × 多样内容 |
-| 只选 1 个提示词 | 9 张 | 提示词 × 9 种默认风格 |
-| 1 个提示词 + 类似图片 | 9 张 | 1 张提示词 + 8 张类似扩散 |
-| N 个提示词（＞1） | N 张 | 每格一张，N ≤ 9 |
-| 全局 + N 个提示词 | N 张 | 全局风格作为基底 |
-
-### 提示词模板
-
-- **提示词** — 描述画面内容的文字模板，可多选组合
-- **全局风格** — 控制整体视觉风格（如"电影感"、"水彩"），单选
-
----
-
-## 🎯 区域测光模式
-
-| 模式 | 区域数 | 适用场景 |
-|------|--------|---------|
-| 九宫格 (3×3) | 9 | 风景摄影、构图分析 |
-| 十六宫格 (4×4) | 16 | 精细测光、建筑摄影 |
-| 二十五宫格 (5×5) | 25 | 高精度分析、产品摄影 |
-| 中心点 | 1 | 中央重点构图 |
-| 重点测光 | 1 | 人像、特写 |
-| 三分法 | 可变 | 经典构图辅助 |
-
-### 区域测光原理
-
-1. 图片转为灰度图（L 通道）
-2. 按选定模式划分区域网格
-3. 计算每个区域平均亮度（0-255）
-4. 映射到曝光指数：`EV = (亮度 - 128) / 45`
-5. 结果限制在 -3EV ~ +3EV 范围
-
----
-
-## 🚀 快速启动
-
-### 方式一：本地运行
+### Docker 一行启动
 
 ```bash
-# 克隆项目
-git clone https://github.com/dongjie-oss/exposure-lab.git
-cd exposure-lab
-
-# 安装依赖
-pip install -r backend/requirements.txt
-
-# 启动服务
-python3 run.py
-```
-
-浏览器访问: http://localhost:8888
-
-> 默认管理员账号: `admin` / `admin`
-
-### 方式二：Docker Compose（推荐）
-
-```bash
-# 克隆项目
-git clone https://github.com/dongjie-oss/exposure-lab.git
-cd exposure-lab
-
-# 创建数据目录
-mkdir -p data/uploads data/results
-
-# 一键启动
-docker compose up -d
-```
-
-浏览器访问: http://localhost:8765
-
-> 用户数据自动持久化到 `./data/` 目录，升级容器不会丢失
-
-### 方式三：Docker 直接运行
-
-```bash
-docker build -t lenslab:latest .
 docker run -d \
-  --name lenslab \
   -p 8765:8765 \
-  -v $(pwd)/data:/app/data \
-  lenslab:latest
+  -v ./lenslab-data:/app/data \
+  -e TZ=Asia/Shanghai \
+  --name lenslab \
+  --restart unless-stopped \
+  registry.cn-hangzhou.aliyuncs.com/exposure-lab/exposure-lab:latest
 ```
 
----
+访问：`http://localhost:8765`
 
-## 🐳 Docker 部署
+### Docker Compose
 
-### 镜像地址
+```yaml
+version: "3.8"
+
+services:
+  lenslab:
+    image: registry.cn-hangzhou.aliyuncs.com/exposure-lab/exposure-lab:latest
+    container_name: lenslab
+    restart: unless-stopped
+    ports:
+      - "8765:8765"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - TZ=Asia/Shanghai
+      - DATA_DIR=/app/data
+```
 
 ```bash
-# 阿里云容器镜像服务
-docker pull registry.cn-hangzhou.aliyuncs.com/{namespace}/exposure-lab:v1.0.0
+# 启动
+docker compose up -d
+
+# 查看日志
+docker compose logs -f
+
+# 停止
+docker compose down
 ```
 
-### 环境变量
+### 数据目录
 
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `PORT` | `8765` | 服务端口 |
-| `DATA_DIR` | `/app/data` | 数据持久化目录 |
-| `ACR_REGISTRY` | `registry.cn-hangzhou.aliyuncs.com` | ACR 仓库地址 |
-| `ACR_NAMESPACE` | `""` | ACR 命名空间 |
-| `ACR_REPO` | `exposure-lab` | ACR 仓库名称 |
+| 路径 | 说明 |
+|------|------|
+| `/app/data/config.json` | AI 模型配置（API Key 等） |
+| `/app/data/uploads/` | 用户上传照片 |
+| `/app/data/results/` | 分析结果 JSON |
+| `/app/data/generated/` | AI 生图临时缓存 |
+| `/app/data/VERSIONS.json` | 版本元数据 |
 
-### 数据持久化
-
-```
-./data/
-  ├── config.json      # 配置文件（含认证、AI 设置）
-  ├── uploads/         # 上传图片（自动清理）
-  └── results/         # AI 生成结果（自动清理）
-```
-
-> 镜像只包含代码，用户数据通过 `volumes` 挂载，升级容器零损失。
+> ⚠️ 挂载 `./data` 即可持久化所有数据，容器重建不丢失。
 
 ---
 
-## 📁 项目结构
+## 更新日志
 
-```
-exposure-lab/
-├── backend/
-│   ├── server.py              # FastAPI 应用入口
-│   ├── analyzer.py            # 核心测光算法引擎
-│   ├── ai_generator.py        # AI 生图引擎
-│   ├── config_manager.py      # 配置管理模块
-│   ├── data_manager.py        # 统一数据持久化框架
-│   ├── versions.py            # 版本管理与 ACR 检查
-│   ├── init_config.py         # 首次运行配置初始化
-│   ├── migrations/            # 数据迁移脚本
-│   │   └── v0_to_v1.py
-│   └── requirements.txt
-├── frontend/
-│   ├── app.jsx                # 主应用 JSX
-│   ├── admin-panel.jsx        # 管理面板 JSX
-│   ├── compile.js             # 编译脚本
-│   ├── index.html             # 入口 HTML
-│   ├── assets/                # 编译产物（CSS + JS）
-│   └── package.json
-├── data/                      # 运行时数据（不提交）
-│   ├── config.json
-│   ├── uploads/
-│   └── results/
-├── docker-compose.yml         # Docker Compose 配置
-├── Dockerfile                 # Docker 构建
-├── docker-entrypoint.sh       # 容器入口
-├── run.py                     # 一键启动脚本
-└── .env.example               # 环境变量模板
-```
+### v1.0.4（2026-06-16）
+- **新增**：移动端适配 — 抽屉导航、顶栏精简、触摸滚动、safe area
+- **新增**：mobile-enhancer.js — fixed 抽屉 + 遮罩方案
+- **新增**：AI 生图预览移动端布局 — 图片在上 + 提示词在下
+- **新增**：版本检测升级 — GitHub version.json 零认证优先 → ACR fallback
+- **新增**：手动检查更新按钮、开发版蓝色提示
+- **新增**：数据持久化 — docker-entrypoint.sh 自动创建数据目录
+- **新增**：启动自检增强 — 目录就绪检查、配置完整性校验
+- **修复**：AI 生图 N 个提示词生成 N×9 张图 BUG
+- **修复**：移动端左侧抽屉文字被全局 CSS 隐藏
+- **修复**：移动端 AI 预览弹窗提示词卡片位置
+- **修复**：多选模式下点击历史图片不关闭抽屉
+- **修复**：右侧面板 w-0 时黑边问题
+- **修复**：版本信息启动自动同步
 
----
+### v1.0.3（2026-06-13）
+- **新增**：AI 图片内容智能识别 — 自动分类人像 / 风景 / 静物
+- **新增**：9 种人像专属风格模板（复古街拍 / 日系清新 / 时尚杂志 / 黑白质感 / 暖调写真 / 冷艳大片 / 电影感人像 / 自然纪实 / 创意光影）
+- **新增**：大图预览提示词面板 — 预览图旁完整展示提示词和标签
+- **优化**：无限想象生成策略根据内容类型自适应，人像场景使用专属风格
+- **修复**：文生图模式下分析结果栏误显示、describe 返回格式健壮性
 
-## 🔧 技术栈
+### v1.0.2（2026-06-12）
+- **新增**：系统管理 tab — 自动/手动清理 AI 生成临时图片
+- **优化**：AI 生图设置面板 UI 布局改进（比例→方向→分辨率单行排列）
+- **修复**：AI 生图弹窗白屏、配置丢失问题
 
-### 后端
-- **Python 3.11+** — 运行时
-- **FastAPI** — Web 框架
-- **Pillow / NumPy** — 图像处理
-- **httpx** — AI API 异步请求
-- **Uvicorn** — ASGI 服务器
+### v1.0.1（2026-06-07）
+- **新增**：自定义提示词功能、无限想象优先级系统
+- **优化**：AI 生图速度（并行执行）、前端按钮动态化
+- **重构**：elif 分支精简、启动检查优化
 
-### 前端
-- **React 18** — UI 框架
-- **Tailwind CSS 4** — 样式（CDN 静态编译）
-- **Babel Standalone** — 浏览器端 JSX 编译
-
-### 部署
-- **Docker** — 容器化
-- **Docker Compose** — 编排
-- **阿里云 ACR** — 镜像仓库
+### v1.0.0（2026-06-03）
+- **初始版本**：区域曝光分析、AI 图表分析、AI 生图、Docker 一键部署
 
 ---
 
-## 📦 版本管理
+## 更新检测
 
-项目使用语义化版本控制，结合 Git 标签和 ACR 镜像标签。
+应用会自动从本仓库的 `version.json` 检查是否有新版本：
 
-| 版本 | 标签 | 说明 |
-|------|------|------|
-| v1.0.0 | `v1.0.0` | 初始发布 |
-| ... | ... | ... |
-
-- **Git 标签** — GitHub releases 管理
-- **镜像标签** — ACR 镜像版本管理
-- **自动检测** — 管理面板可检查最新版本
+- **查询地址**：`https://raw.githubusercontent.com/dongjie-oss/LensLab/main/version.json`
+- **无需认证**：仓库公开，直接 HTTP GET 即可
+- **检查频率**：设置页面手动点击 / 启动时自动检查
 
 ---
 
-## 💻 开发
+## 许可
 
-### 前端热编译
-
-```bash
-cd frontend
-npm install
-node compile.js    # 编译 JSX → assets/app.compiled.js
-```
-
-> 编译后通过 `docker cp` 部署到运行中的容器。
-
-### 构建镜像
-
-```bash
-cd exposure-lab
-docker build -t exposure-lab:v1.0.0 .
-```
-
----
-
-## 📄 License
-
-MIT License — 详见 [LICENSE](LICENSE)
+本项目为闭源软件。你可以自由部署和使用，但不得修改、分发源码或进行商业再分发。
 
 ---
 
 <p align="center">
-  <sub>Powered by darkness, precision, and AI. 镜头演算室 · 从测光到创作</sub>
+  <i>LensLab · 让每一张照片的曝光都经得起推敲</i>
 </p>
