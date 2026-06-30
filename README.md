@@ -35,7 +35,7 @@
 - **后端**：Python 3.11 + FastAPI + Pillow + Uvicorn
 - **前端**：原生 JS（编译为单文件，无需 Node 运行时）
 - **AI**：支持 OpenAI 兼容 API（DeepSeek、Kimi、OpenAI 等）
-- **部署**：Docker + Docker Compose 一键启动
+- **部署**：Docker + Docker Compose 一键启动 / Windows 独立 EXE
 - **端口**：`8765`（所有部署方式统一）
 
 ---
@@ -98,9 +98,33 @@ docker compose down
 
 > ⚠️ 挂载 `./data` 即可持久化所有数据，容器重建不丢失。
 
+### Windows 独立 EXE
+
+无需 Docker，直接双击运行：
+
+- 📦 下载：[LensLab-Setup-1.0.5.exe](https://github.com/dongjie-oss/LensLab/releases/latest)
+- 安装后自动创建桌面图标
+- 数据目录：`C:\Users\<用户名>\.exposure-lab\`
+- 单实例保护，自动选择可用端口（8765-8799）
+
 ---
 
 ## 更新日志
+
+### v1.0.5（2026-06-30）
+- **新增**：AI 生图下载按钮 — 9宫格预览每张图下方显示"下载原图"
+- **新增**：历史图片预览下载按钮 — EXE 环境显示，Docker 环境隐藏
+- **新增**：Windows 原生保存对话框 — PowerShell WPF SaveFileDialog，无需浏览器
+- **新增**：Windows 独立 EXE 发布 — Inno Setup 中文安装包
+- **新增**：Windows 单实例检测 + 自动端口选择（8765-8799）
+- **新增**：配置 schema v2 结构化迁移（备份→合并→验证→删备份）
+- **修复**：AI 生图 SSL 证书错误 — Nuitka 打包后 HTTPS 失败，改用 certifi
+- **修复**：PowerShell 保存对话框中文乱码 — UTF-8 BOM + 英文文本
+- **修复**：下载按钮位置 — 历史预览窗口按钮从图片右侧改为图片下方居中
+- **修复**：前端 downloadImage 兼容 pywebview — fetch+blob 替代 `<a download>`
+- **修复**：前端 metering_points 空值保护 — 防止 null/undefined 导致黑屏
+- **修复**：Windows GBK 编码兼容 — 所有文件读写显式指定 encoding=utf-8
+- **修复**：Inno Setup 覆盖安装桌面图标重复 — 加 AppId 统一应用标识
 
 ### v1.0.4（2026-06-16）
 - **新增**：移动端适配 — 抽屉导航、顶栏精简、触摸滚动、safe area
