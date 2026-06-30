@@ -102,7 +102,7 @@ docker compose down
 
 无需 Docker，直接双击运行：
 
-- 📦 下载：[LensLab-Setup-1.0.5.exe](https://github.com/dongjie-oss/LensLab/releases/latest)
+- 📦 下载：[LensLab-Setup-1.0.5.exe](https://github.com/dongjie-oss/LensLab/releases/download/v1.0.5/LensLab-Setup-1.0.5.exe)
 - 安装后自动创建桌面图标
 - 数据目录：`C:\Users\<用户名>\.exposure-lab\`
 - 单实例保护，自动选择可用端口（8765-8799）
